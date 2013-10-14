@@ -1,0 +1,6 @@
+; $Id$
+name = Thai format
+description = convert date time to thai format
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

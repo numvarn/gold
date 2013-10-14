@@ -1,0 +1,5 @@
+; $Id$
+name = stake manager
+description = TODO: Description of module
+package = Phisan Shukkhi
+core = 6.x

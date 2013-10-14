@@ -1,0 +1,6 @@
+; $Id$
+name = Employee Profile
+description = employee profile manager
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

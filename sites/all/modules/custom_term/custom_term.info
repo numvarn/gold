@@ -1,0 +1,6 @@
+; $Id$
+name = Custom Taxonomy
+description = Custom Taxonomy manager
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

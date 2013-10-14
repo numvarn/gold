@@ -1,0 +1,35 @@
+<?php
+/**
+ * Manual insert Term ID and Term Data
+ * @param term name
+ * @param vocabulary id
+ * @return term id
+ * 
+ * If term name is exist return term-id
+ * If term name is not exist insert this term into this vocabulary and return term-id
+ */ 
+function custom_term_set_new(&$term_name, $vid) {
+	$term_name = ($term_name != "") ? trim($term_name) : "ไม่ระบุ" ;
+	$term_name = strtolower($term_name);
+	$id = db_result(db_query("SELECT tid FROM {term_data} WHERE name='%s'", $term_name));
+	if ($id) {
+		return $id;
+	}
+	else {
+		$term = array(
+				'vid' => $vid,
+				'name' => $term_name
+			);
+		drupal_write_record('term_data', $term);
+		
+		$new_tid = db_result(db_query('SELECT tid FROM {term_data} ORDER BY tid DESC LIMIT 1'));
+		
+		$hierarchy = array(
+				'tid' => $new_tid,
+				'parent' => 0
+			);
+		drupal_write_record('term_hierarchy', $hierarchy);
+		return $new_tid;
+	}	
+}
+?>

@@ -1,0 +1,5 @@
+; $Id$
+name = Custom user page
+description = Custom user page
+package = Phisan Shukkhi
+core = 6.x

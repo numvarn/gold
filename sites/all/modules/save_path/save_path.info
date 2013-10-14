@@ -1,0 +1,6 @@
+; $Id$
+name = Save Path
+description = Redirect to a certain page after a node save
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

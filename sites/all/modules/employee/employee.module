@@ -1,0 +1,664 @@
+<?php
+/**
+ * Implementation of hook_help().
+ */
+function employee_help($path, $arg) {
+	$output = "";
+  	switch ($path) {
+    	case 'manager/add/employee':
+			$output = '<div class="">เมื่อทำการบันทึกข้อมูลประวัติแล้ว ระบบจะทำการสร้าง account ของพนักงานภายในร้านเข้าสู่ระบบทันที</div>';
+			$output .= '<div class="">หลังจากนั้นพนักงานจะสามารถเข้าใช้งานระบบได้ทันที</div>';
+			break;
+  	}
+
+	return $output;
+}
+
+/**
+ * function
+ */
+function employee_menu(){
+	$items = array();
+	
+	$items['manager/add/employee'] = array(
+		'access arguments' => array("create employee_profile content"),
+    	'page callback' => 'employee_add_new_profile',
+    	'title' =>  t("เพิ่มรายชื่อพนักงานภายในร้าน"),
+    	'type' => MENU_CALLBACK,
+  	);
+
+	return $items;
+}
+/**
+ * undocumented function
+ *
+ * @return void
+ * @author Phisan Shukkhi
+ **/
+function employee_nodeapi(&$node, $op, $a3=NULL, $a4=NULL) {
+	if ($node->type == "employee_profile") {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				//employee_display_alert_message($node);
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-form.css');
+				
+				employee_set_field_username($node);
+				
+				break;
+			case 'insert':
+				employee_create_new_user($node);
+				break;
+			case 'update':
+				employee_set_account_name($node);
+				employee_set_new_pass($node);
+				break;
+		}
+	}
+	elseif ($node->type == 'customer_profile') {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				drupal_set_title("กรอกข้อมูลลูกค้าใหม่");
+				employee_customer_breadcrumb();
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-fieldgroup.css');
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-form.css');
+				break;
+			case 'view':
+				drupal_set_title(t("รายการจำนำทองของ #name", array('#name'=>$node->title)));
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				break;
+			case 'insert':
+				employee_add_customer_to_term($node);
+				break;
+			case 'update':
+				employee_update_customer_to_term($node);
+				break;
+			case 'delete':
+				employee_delete_customer_to_term($node);
+				break;
+		}
+	}
+	
+	/*Hide exclude display config*/
+	if ($op == 'prepare' || $op == 'validate') {
+		global $user;
+		if ($user->uid != 1) {
+			drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-exclude-title.css');
+		}
+	}
+}
+
+function employee_add_new_profile() {
+	$output = '';
+	
+	$breadcrumb[] = l("Home", NULL);
+	$breadcrumb[] = l("จัดการระบบ", 'manager/dashboard');
+	drupal_set_breadcrumb($breadcrumb);
+	
+	$output .= drupal_get_form('employee_add_new_employee_profile');
+	
+	
+	return $output;
+}
+
+/**
+ * function
+ */
+function employee_set_field_username(&$node){
+	if ($node->field_emp_login_name[0]['value'] != "") {
+		$result = db_query("SELECT name FROM {users} WHERE uid=%d", $node->uid);
+		$account_name = db_result($result);
+
+		$node->field_emp_login_name[0]['value'] = $account_name;
+	}
+}
+
+/**
+ * function
+ */
+function employee_set_new_pass(&$node){
+	if ($node->field_emp_init_pass[0]['value'] != "") {
+		db_query("UPDATE {users} SET pass='%s' WHERE uid=%d", md5($node->field_emp_init_pass[0]['value']), $node->uid);
+	}
+}
+
+/**
+ * function
+ */
+function employee_display_alert_message(&$node){
+	$output = '';
+	if ($node->nid) {
+		$output .= '<div class="alert-employee-profile-form">'.t("หากไม่ต้องการแก้ไข Password ให้ปล่อยช่อง #msg ว่างไว้", array("#msg" => "กำหนดรหัส")).'</div>';
+		drupal_set_title("แก้ไขประวัติพนักงาน");
+	}
+	else {
+		drupal_set_title("สร้างประวัติพนักงาน");
+	}
+	
+	return $output;
+}
+
+/**
+ * function
+ */
+function employee_set_account_name(&$node){
+	db_query("UPDATE {users} SET name='%s' WHERE uid=%d", $node->field_emp_login_name[0]['value'], $node->uid);
+	
+	if ($node->field_emp_roles[0]['value'] == 0) {
+		$roles = 4;
+	}
+	else {
+		$roles = 3;
+	}
+	
+	db_query("UPDATE {users_roles} SET rid=%d WHERE uid=%d", $roles, $node->uid);
+}
+
+/**
+ * function
+ */
+function employee_add_new_employee_profile($form_state){
+	$form = array();
+	
+	$form['field_emp_prefix'] = array(
+		'#type' => 'select',
+		'#title' => 'คำนำหน้านาม',
+		'#options' => array(1 => 'นาย', 2 => 'นางสาว', 3 => 'นาง'),
+		'#required' => TRUE,
+	);
+	
+	$form['field_emp_fname'] = array(
+		'#type' => 'textfield',
+		'#title' => 'ชื่อจริง',
+		'#required' => TRUE,
+	);
+	
+	$form['field_emp_lname'] = array(
+		'#type' => 'textfield',
+		'#title' => 'นามสกุล',
+		'#required' => TRUE,
+	);
+	
+	$form['field_emp_citizen_id'] = array(
+		'#type' => 'textfield',
+		'#title' => 'หมายเลขบัตรประจำตัวประชาชน',
+		'#description' => 'หมายเลขประจำตัวประชาชน 13 หลัก',
+	);
+	
+	$form['field_emp_address'] = array(
+		'#type' => 'textarea',
+		'#title' => 'ที่อยู่ที่ติดต่อได้',
+		'#rows' => 3,
+		'#description' => 'ข้อมูลหมายเลขบ้านเลขที่ หมู่ที่ ตำบล อำเภอ จังหวัด หมายเลขหรัสไปรษณี'
+	);
+	
+	$form['field_emp_phone'] = array(
+		'#type' => 'textfield',
+		'#title' => 'เบอร์โทร',
+		'#description' => 'กรอกเบอร์โทรของลูกค้า เช่น 0867111430'
+	);
+	
+	$form['field_emp_login_name'] = array(
+		'#type' => 'textfield',
+		'#title' => 'ชื่อที่ใช้ Login',
+		'#description' => 'กำหนดชื่อที่ใช้สำหรับ login เข้าสู่ระบบ',
+		'#required' => TRUE,
+	);
+	
+	$form['field_emp_init_pass'] = array(
+		'#type' => 'password',
+		'#title' => 'กำหนดรหัส',
+		'#description' => 'กำหนดรหัสสำหรับเข้าใช้ระบบ',
+		'#required' => TRUE,
+	);
+	
+	
+	$form['field_emp_roles'] = array(
+		'#type' => 'radios',
+		'#title' => 'กำหนดหน้าที่ของผู้ใช้งาน',
+		'#options' => array(0 => 'พนักงาน', 1 => 'ผู้จัดการ'),
+		'#default_value' => 0,
+		'#required' => TRUE,
+	);
+	
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => 'สร้างพนักงานใหม่'
+	);
+	
+	return $form;
+}
+function employee_add_new_employee_profile_validate($form_id, $form_state) {
+	$name = $form_state['values']['field_emp_login_name'];
+	$result = db_query("SELECT uid FROM {users} WHERE name='%s'", trim($name));
+	$uid = db_result($result);
+	
+	if ($uid) {
+		form_set_error('field_emp_login_name', t("ชื่อสำหรับใช้ login : #name ได้ถูกใช้ไปแล้ว", array('#name'=>$name)));
+	}
+}
+
+
+function employee_add_new_employee_profile_submit($form_id, $form_state) {
+	$em_profile = new stdClass();
+	$em_profile->type = 'employee_profile';
+	
+	$em_profile->field_emp_prefix[0]['value'] = $form_state['values']['field_emp_prefix'];
+	$em_profile->field_emp_fname[0]['value'] = $form_state['values']['field_emp_fname'];
+	$em_profile->field_emp_lname[0]['value'] = $form_state['values']['field_emp_lname'];
+	$em_profile->field_emp_citizen_id[0]['value'] = $form_state['values']['field_emp_citizen_id'];
+	$em_profile->field_emp_address[0]['value'] = $form_state['values']['field_emp_address'];
+	$em_profile->field_emp_phone[0]['value'] = $form_state['values']['field_emp_phone'];
+	$em_profile->field_emp_init_pass[0]['value'] = $form_state['values']['field_emp_init_pass'];
+	$em_profile->field_emp_login_name[0]['value'] = $form_state['values']['field_emp_login_name'];
+	$em_profile->field_emp_roles[0]['value'] = $form_state['values']['field_emp_roles'];
+	
+	node_save($em_profile);
+	drupal_set_message("ทำการสร้างพนักงานใหม่เข้าสู่ระบบเรียบร้อยแล้ว");
+}
+
+/**
+ * Register new theme
+ */
+function employee_theme() {
+	return array(
+		'customer_profile_node_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+			
+		'employee_profile_node_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+			
+		'stake_rate_node_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+		
+		'employee_add_new_employee_profile' => array(
+			'arguments' => array('form' => NULL)
+			)
+	);
+}
+
+function theme_stake_rate_node_form($form) {
+	$output = '';
+	$output .= '<div class="stake-rate-custom-form">
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_stake_lower']).'
+					</div>
+					
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_stake_upper']).'
+					</div>
+					
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_stake_percent']).'
+					</div>
+					
+					<div class="grid_4 submit">
+						'.drupal_render($form['buttons']['submit']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="stake-hidden-field">
+						'.drupal_render($form['field_stake_status']).'
+						'.drupal_render($form['field_stake_parent_ref']).'
+					</div>
+					'.drupal_render($form).'
+				</div>';
+	
+	return $output;
+}
+
+function theme_customer_profile_node_form($form) {
+	$output = '';
+	$output .= '<div class="custom-customer-profile-form">
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_customer_prefix']).'
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_customer_name']).'
+					</div>
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_customer_lname']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="form-title">
+						'.t("ข้อมูลอื่นๆ (ไม่จำเป็นต้องกรอก)").'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_customer_citizen_id']).'
+					</div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_customer_phone']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row3">
+						'.drupal_render($form['field_customer_address']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					'.drupal_render($form).'
+				</div>';
+	
+	return $output;
+}
+
+function theme_employee_profile_node_form($form) {
+	$output = '';
+	$output .= '<div class="custom-customer-profile-form">
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_emp_prefix']).'
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_fname']).'
+					</div>
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_lname']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row-pass">
+						&nbsp;
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_login_name']).'
+					</div>
+							
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_init_pass']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="form-title">
+						'.t("ข้อมูลอื่นๆ (ไม่จำเป็นต้องกรอก)").'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_emp_citizen_id']).'
+					</div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_emp_phone']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row3">
+						'.drupal_render($form['field_emp_address']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="form-title">
+						'.t("หน้าที่ของผู้ใช้งาน").'
+					</div>
+					
+					<div class="grid_4 row3">
+						'.drupal_render($form['field_emp_roles']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					'.drupal_render($form).'
+				</div>';
+	
+	return $output;
+}
+
+function theme_employee_add_new_employee_profile($form) {
+	$output = '';
+	$output .= '<div class="custom-customer-profile-form">
+					<div class="grid_4 row1">
+						'.drupal_render($form['field_emp_prefix']).'
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_fname']).'
+					</div>
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_lname']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row-pass">
+						&nbsp;
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_login_name']).'
+					</div>
+							
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_init_pass']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="form-title">
+						'.t("ข้อมูลอื่นๆ (ไม่จำเป็นต้องกรอก)").'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_emp_citizen_id']).'
+					</div>
+					
+					<div class="grid_4 row2">
+						'.drupal_render($form['field_emp_phone']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="grid_4 row3">
+						'.drupal_render($form['field_emp_address']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					<div class="form-title">
+						'.t("หน้าที่ของผู้ใช้งาน").'
+					</div>
+					
+					<div class="grid_5 row1">
+						'.drupal_render($form['field_emp_roles']).'
+					</div>
+					
+					<div class="clear-block"></div>
+					
+					'.drupal_render($form).'
+				</div>';
+	
+	return $output;
+}
+
+function employee_customer_breadcrumb() {
+	$breadcrumb[] = l("Home", NULL);
+	drupal_set_breadcrumb($breadcrumb);
+}
+
+function employee_get_full_name($uid) {
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $uid));
+	return $name;
+}
+
+function employee_get_adder_name($nid) {
+	$uid = db_result(db_query("SELECT uid FROM {node} WHERE nid=%d", $nid));
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $uid));
+	
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+	
+	return $name;
+}
+
+/**
+ * function
+ */
+function employee_get_current_emp_name(){
+	global $user;
+	$result = db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile');
+	$name = db_result($result);
+	
+	return $name;
+}
+
+function employee_add_date_thai($nid) {
+	$created = db_result(db_query("SELECT created FROM {node} WHERE nid=%d",$nid));
+	$msg = thai_time_format($created, 'd-F-Y', 1);
+	return $msg;
+}
+
+function employee_form_alter(&$form, $form_state, $form_id) {
+   if($form_id == 'customer_profile_node_form') {
+     $form['#validate'][] = 'employee_customer_form_check';
+   }
+   elseif($form_id == 'employee_profile_node_form') {
+     $form['#validate'][] = 'employee_profile_form_check';
+   }
+}
+
+function employee_add_customer_to_term(&$node) {
+	$vocab_id = 4;
+	$tid = custom_term_set_new($node->title, $vocab_id);
+	
+	$data = array(
+		'nid' => $node->nid,
+		'vid' => $node->nid,
+		'tid' => $tid
+	);
+	
+	drupal_write_record('term_node', $data);	
+	
+	db_query("UPDATE {content_type_customer_profile} SET field_customer_name_term_value=%d WHERE nid=%d", $tid, $node->nid);
+}
+
+function employee_update_customer_to_term(&$node) {
+	db_query("UPDATE {term_data} SET name='%s' WHERE tid=%d", $node->title, $node->field_customer_name_term[0]['value']);
+}
+
+function employee_delete_customer_to_term(&$node) {
+	db_query("DELETE FROM {term_data} WHERE tid=%d", $node->field_customer_name_term[0]['value']);
+	db_query("DELETE FROM {term_hierarchy} WHERE tid=%d", $node->field_customer_name_term[0]['value']);
+}
+
+function employee_customer_form_check($form, &$form_state) {
+	$name = trim($form_state['values']['field_customer_name'][0]['value'])." ".
+			trim($form_state['values']['field_customer_lname'][0]['value']);
+			
+	$nid = 0;
+	$nid = db_result(db_query("SELECT nid FROM {node} WHERE title='%s' AND type='%s' ", $name, 'customer_profile'));
+	
+	if ($nid && $nid != $form_state['values']['nid']) {
+		form_set_error('field_customer_name', t("ชื่อ #name เคยถูกบันทึกเอาไว้ในฐานข้อมูลลูกค้าแล้ว", array("#name"=>$name)));
+		form_set_error('field_customer_lname', '');
+	}
+	
+}
+
+/**
+ * Validate data from employee profile cck form.
+ */ 
+function employee_profile_form_check($form, &$form_state) {
+	if ($form_state['values']['nid'] == "") {
+		if ($form_state['values']['field_emp_init_pass'][0]['value'] == "") {
+			form_set_error('field_emp_init_pass', t("กรุณากรอกข้อมูลเพื่อกำหนดรหัสผ่าน"));
+		}
+	}
+}
+
+/**
+ * function
+ */
+function employee_check_online_status($uid){
+	$user_access = db_result(db_query("SELECT access FROM {users} WHERE uid = %d", $uid));
+    $data = (round((time() - $user_access) / 60) < 15 ? TRUE : FALSE);
+	
+	if ($data) {
+		$status = "Online";
+	}
+	else {
+		$status = "Offline";
+	}
+	
+	return $status;
+}
+
+function employee_user($op, &$edit, &$account, $category = NULL) {
+	if ($op == "login" && $account->uid > 1) {
+		$_REQUEST['destination'] = "transaction/ticket/search";
+	}
+}
+
+/**
+ * function
+ */
+function employee_edit_profile($uid){
+	return l("edit", "user/".$uid."/profile/employee_profile");
+}
+
+function employee_create_new_user(&$profile) {
+	/*get last profile node id*/
+	$last_profile_id = db_result(db_query("SELECT nid 
+										   FROM {node} 
+										   WHERE type='%s' 
+										   ORDER BY nid DESC LIMIT 1", 'employee_profile'));
+	
+	/*get last user id*/
+	$last_uid = db_result(db_query("SELECT uid FROM {users} ORDER BY uid DESC LIMIT 1")); 
+	
+	$new_uid = $last_uid + 1;
+	
+	// $name = trim($profile->field_emp_fname[0]['value'])." ".trim($profile->field_emp_lname[0]['value']);
+	
+	$name = trim($profile->field_emp_login_name[0]['value']);
+	
+	$active = 1;
+	
+	$mail = "employee".$new_uid."@gold.com";
+	
+	if ($profile->field_emp_roles[0]['value'] == 0) {
+		$roles = array(4 => 'พนักงาน');
+	}
+	else {
+		$roles = array(3 => 'ผู้จัดการ');
+	}
+	
+	$account = array(
+				'name' => $name,
+				'pass' => $profile->field_emp_init_pass[0]['value'],
+				'mail' => $mail,
+				'init' => $mail,
+				'status' => $active,
+				'roles' => $roles,
+		);
+		
+	$new_user = user_save(NULL, $account, $category = 'account');
+	
+	db_query("UPDATE {node} SET uid=%d WHERE nid=%d", $new_user->uid, $last_profile_id);
+}
+
+

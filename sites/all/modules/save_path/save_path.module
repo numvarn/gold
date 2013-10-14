@@ -1,0 +1,83 @@
+<?php
+/**
+* Implementation of hook_form_alter().
+*/
+function save_path_form_alter(&$form, $form_state, $form_id) {
+	if ($form_id == 'transaction_detail_node_form') {
+		$form['buttons']['submit']['#submit'][] = 'save_path_transaction_detail_redirect_handler';
+	}
+	elseif ($form_id == 'customer_profile_node_form') {
+		$form['buttons']['submit']['#submit'][] = 'save_path_customer_profile_redirect_handler';
+	}
+	elseif ($form_id == 'gold_category_node_form') {
+		$form['buttons']['submit']['#submit'][] = 'save_path_gold_category_redirect_handler';
+	}
+	elseif ($form_id == 'stake_rate_node_form') {
+		$form['buttons']['submit']['#submit'][] = 'save_path_stake_rate_redirect_handler';
+	}
+}
+
+/**
+ * Customer Profile Redirect
+ */ 
+function save_path_customer_profile_redirect_handler($form, &$form_state) {
+	if ($form_state['values']['nid'] == "") {
+		$new_node_id = db_result(db_query("SELECT nid FROM {node} ORDER BY nid DESC LIMIT 1"));			
+		
+		$redirect = array(
+			'path' => "node/".$new_node_id."/add-transaction",
+			'query' => NULL,
+			'fragment' => 'list'
+		);
+		
+		$form_state['redirect'] = $redirect;
+	}
+	else {
+		$destination = drupal_get_path_alias("node/".$form_state['values']['nid']);
+	}
+}
+
+/**
+ * function
+ */
+function save_path_stake_rate_redirect_handler($form, &$form_state){
+	$new_node_id = save_path_get_current_node($form_state);	
+	$node = node_load($new_node_id);
+	
+	$destination = drupal_get_path_alias("node/".$node->field_stake_parent_ref[0]['nid']);
+	
+	$form_state['redirect'] = $destination;
+}
+
+/**
+ *
+ */
+function save_path_gold_category_redirect_handler($form, &$form_state) {
+	$redirect = array(
+		'path' => "manager/product/category",
+		'query' => NULL,
+		'fragment' => ''
+	);
+	
+	$form_state['redirect'] = $redirect;
+} 
+
+function save_path_transaction_detail_redirect_handler($form, &$form_state) {
+	$new_node_id = save_path_get_current_node($form_state);	
+	$node = node_load($new_node_id);
+	
+	$destination = drupal_get_path_alias("node/".$node->field_transaction_ref[0]['nid']);
+	
+	$form_state['redirect'] = $destination;
+}
+
+function save_path_get_current_node(&$form_state) {
+	if ($form_state['values']['nid'] == "") {
+		$new_node_id = db_result(db_query("SELECT nid FROM {node} ORDER BY nid DESC LIMIT 1"));	
+	}else {
+		$new_node_id = $form_state['values']['nid'];
+	}	
+	return $new_node_id;
+}
+
+?>

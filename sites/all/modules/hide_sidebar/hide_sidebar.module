@@ -1,0 +1,46 @@
+<?php
+function hide_sidebar_help($path, $arg) {
+	switch ($path) {
+		case 'manager/employee':
+		case 'customer':
+		case 'customer/all':
+		case 'customer/own':
+		case 'transaction/all':
+		case 'rate':
+		case 'rate/all':
+		case 'rate/edit':
+		case 'rate/cancel':
+		case 'node/%/renew':
+		case 'node/%/reduce':
+		case 'node/%/add-cost':
+		case 'node/%/withdraw':
+		case 'node/%/close':
+		case 'node/%/reprint':
+		case 'transaction/ticket':
+		case 'manager/employee/show':
+		case 'transaction/ticket/search':
+		case 'user/%/edit':
+		case 'custom-user/%/track':
+		case 'track/employee/%':
+		case 'node/%/transaction-all':
+		case 'manager/add/employee':
+		case 'custom-user/%':
+		case 'node/add/gold-category':
+		case 'manager/product/category':
+		case 'report/excel':
+		case 'node/add/stake':
+		case 'report/view/new':
+		case 'report/view/cancel':
+		case 'report/view/out-time':
+		case 'report/view/closed':
+		case 'report/view/withdraw':
+		case 'report/view/reduce':
+		case 'report/view/add-cost':
+		case 'report/view/conclusion':
+		case 'report/view/lost-ticket':
+		case 'calendar/holiday':
+			drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+			break;
+	}
+}
+?>

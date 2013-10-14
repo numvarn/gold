@@ -1,0 +1,5 @@
+; $Id$
+name = Report
+description = Report generator
+package = Phisan Shukkhi
+core = 6.x

@@ -1,0 +1,165 @@
+<?php
+// $Id$
+/**
+ * @file custom_user.module
+ * TODO: Enter file description here.
+ */
+
+/**
+ * Implementation of hook_perm().
+ */
+function custom_user_perm() {
+  return array('view custom user page');
+}
+
+/**
+ * function
+ */
+function custom_user_menu(){
+	$items['custom-user/%custom_user_id'] = array(
+		'access arguments' => array("view custom user page"),
+    	'page callback' => 'custom_user_page',
+		'page arguments' => array(1),
+    	'title' =>  t("ประวัติ"),
+    	'type' => MENU_CALLBACK,
+  	);
+	
+	$items['custom-user/%custom_user_id/profile'] = array(
+		'access arguments' => array("view custom user page"),
+    	'page callback' => 'custom_user_page',
+		'page arguments' => array(1),
+    	'title' =>  t("ข้อมูลผู้ใช้"),
+		'weight' => 0,
+    	'type' => MENU_DEFAULT_LOCAL_TASK,
+  	);
+
+	$items['custom-user/%custom_user_id/edit-profile'] = array(
+		'access arguments' => array("view custom user page"),
+    	'page callback' => 'custom_user_page_edit',
+		'page arguments' => array(1),
+    	'title' =>  t("แก้ไขข้อมูลผู้ใช้"),
+		'weight' => 2,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['custom-user/%custom_user_id/track'] = array(
+		'access arguments' => array("view custom user page"),
+    	'page callback' => 'custom_user_page_track',
+		'page arguments' => array(1),
+    	'title' =>  t("ประวัติการใช้งานระบบ"),
+		'weight' => 3,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	return $items;
+}
+
+function custom_user_id_load($arg) {
+	return $arg;
+}
+
+/**
+ * function
+ */
+function custom_user_page($uid){
+	$output = '';
+	$current_user = user_load($uid);
+	
+	drupal_set_title(t('ข้อมูลผู้ใช้ของ '.$current_user->name));
+	
+	$breadcrumb[] = l("Home", NULL);
+	$breadcrumb[] = l("รายชื่อพนักงานภายในร้าน", 'manager/employee');
+	drupal_set_breadcrumb($breadcrumb);
+	
+	$result = db_query("SELECT nid FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $uid);
+	$profile_nid = db_result($result);
+	
+	if ($profile_nid) {
+		$node = node_load($profile_nid);
+		$output .= node_show($node, 1);
+	}
+	
+	return $output;
+}
+
+function custom_user_page_edit($uid){
+	$output = '';
+	$current_user = user_load($uid);
+	
+	drupal_set_title(t('แก้ไขประวัติของ '.$current_user->name));
+	
+	$result = db_query("SELECT nid FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $uid);
+	$profile_nid = db_result($result);
+	
+	$profile = node_load($profile_nid);
+	
+	/*Get CCK Form*/
+	$new_enroll = new stdClass();
+	$new_enroll->type = 'employee_profile';
+
+	module_load_include('inc', 'node', 'node.pages');
+	
+	$output .= employee_display_alert_message($profile);
+	$output .= drupal_get_form('employee_profile_node_form', $profile);
+	
+	return $output;
+}
+
+/**
+ * function
+ */
+function custom_user_front_page(){
+	global $user;
+	if ($user->uid == 0) {
+		$output = drupal_get_form(user_login);
+	}else {
+		$path = "http://".$_SERVER['SERVER_NAME'].base_path()."misc/icon/";
+		$output .= '<div id="front-menu">
+						<div class="grid_1">
+							<div class=""><img src="'.$path.'full-time.png"></div>
+							<div class="">'.l("ระบบจำนำร้านทอง","transaction/ticket/search").'</div>
+						</div>
+						<div class="grid_1">
+							<div class=""><img src="'.$path.'hire-me.png"></div>
+							<div class="">'.l("ระบบใบรับรองเพชร","#").'</div>
+						</div>
+						<div class="grid_1">
+							<div class=""><img src="'.$path.'download.png"></div>
+							<div class="">'.l("ระบบสต๊อกทอง","#").'</div>
+						</div>
+						
+						<div class="clear-block"></div>
+						
+						<div class="grid_1">
+							<div class=""><img src="'.$path.'about-me.png"></div>
+							<div class="">'.l("การจัดการระบบ","#").'</div>
+						</div>
+						<div class="grid_1">
+							<div class=""><img src="'.$path.'blog.png"></div>
+							<div class="">'.l("คู่มือการใช้งานระบบ","#").'</div>
+						</div>
+					</div>';
+	}
+	
+	return $output;
+}
+
+function custom_user_page_track($uid){
+	$output = '';
+	$current_user = user_load($uid);
+	
+	drupal_set_title(t('ประวัติการใช้งานระบบของ '.$current_user->name));
+	
+	$output .= views_embed_view('tracker_employee', 'default', $uid);
+	
+	return $output;
+}
+
+
+/**
+ * Implementation of hook_form_alter().
+ */
+// function custom_user_form_alter(&$form, &$form_state, $form_id) {
+// 	drupal_set_message("#msg $form_id");
+// }
+

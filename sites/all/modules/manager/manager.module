@@ -1,0 +1,45 @@
+<?php
+function manager_nodeapi(&$node, $op, $a3=NULL, $a4=NULL) {
+	if ($node->type == 'gold_category') {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				drupal_set_title("กรอกข้อมูลหมวดหมู่สินค้า");
+				break;
+		}
+	}
+	elseif ($node->type == 'holliday') {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				drupal_set_title("สร้างกำหนดการวันหยุดร้าน");
+				$breadcrumb[] = l('Home', '');
+				$breadcrumb[] = l('จัดการระบบ', 'manager/dashboard');
+				drupal_set_breadcrumb($breadcrumb);
+				
+				break;
+			case 'view':
+				$breadcrumb[] = l('Home', '');
+				$breadcrumb[] = l('ปฏิทินแสดงวันหยุดร้าน', 'calendar/holiday');
+				drupal_set_breadcrumb($breadcrumb);
+				break;
+		}
+	}
+	
+}
+
+/**
+ * function
+ */
+function manager_get_user_name_edit_link($uid){
+	return l("edit", "custom-user/".$uid."/edit-profile");
+}
+
+/**
+ * function
+ */
+function manager_get_user_track_link($uid){
+	return l("ดูประวัติการใช้งาน", "custom-user/".$uid."/track");
+}
+
+

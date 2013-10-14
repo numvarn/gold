@@ -1,0 +1,6 @@
+; $Id$
+name = Custom JavaScript & JQuery
+description = Custom JavaScript & JQuery by Phisan Shukkhi
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

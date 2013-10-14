@@ -1,0 +1,6 @@
+; $Id$
+name = Hide Sidebar
+description = Hide Sidebar for display some path
+package = Rajapark
+version = VERSION
+core = 6.x

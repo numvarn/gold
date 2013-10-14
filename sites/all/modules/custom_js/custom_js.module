@@ -1,0 +1,12 @@
+<?php
+function custom_js_help($path, $arg) {
+	switch ($path) {
+		case 'transaction/all':
+			drupal_add_js(drupal_get_path("module", "custom_js")."/search_view.js");
+			drupal_add_js(drupal_get_path("module", "custom_js")."/operation-goto.js");
+			break;
+	}
+	
+	return $output;
+}
+?>

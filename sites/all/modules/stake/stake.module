@@ -1,0 +1,173 @@
+<?php
+// $Id$
+/**
+ * @file stake.module
+ * TODO: Enter file description here.
+ */
+
+/**
+ * Implementation of hook_perm().
+ */
+function stake_perm() {
+  return array('');
+}
+
+/**
+ * function
+ */
+function stake_help($path, $arg){
+	switch ($path) {
+		case 'node/add/stake':
+			drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-stake-field.css');
+			break;
+	}
+}
+
+
+/**
+ * Hook_menu
+ *
+ **/
+function stake_menu() {
+	$items['stake/define'] = array(
+		'access arguments' => array("create stake_rate content"),
+    	'page callback' => 'stake_define_rate',
+    	'page arguments' => array(1),
+    	'title' =>  t("กำหนดอัตราดอกเบี้ย"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	return $items;
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function stake_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+ 	if ($node->type == "stake") {
+ 		switch ($op) {
+			case 'view':
+				
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				stake_check_status($node);
+				$node->content['stake-form'] = array(
+					'#value' => stake_set_add_form($node),
+				);
+
+				break;
+			case 'insert':
+				stake_set_disable($node);
+				break;
+			case 'update':
+				stake_set_status($node);
+				break;
+	  	}
+ 	}
+}
+
+/**
+ * function
+ */
+function stake_check_status(&$node){
+	$result = db_query("SELECT field_stake_parent_status_value FROM {content_type_stake} WHERE nid=%d", $node->nid);
+	$status = db_result($result);
+	if ($status == 0) {
+		drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-stake-edit.css');
+		$breadcrumb[] = l("Home", NULL);
+		$breadcrumb[] = l("อัตราดอกเบี้ย", 'rate');
+		$breadcrumb[] = l("รายการชุดดอกเบี้ยที่ถูกยกเลิก", 'rate/cancel');
+		drupal_set_breadcrumb($breadcrumb);
+	}
+}
+
+/**
+ * function
+ */
+function stake_define_rate(){
+	$output = '';
+	
+	$result = db_query("SELECT nid FROM {content_type_stake} WHERE field_stake_parent_status_value=%d ORDER BY nid DESC LIMIT 1", 1);
+	$nid = db_result($result);
+
+	if ($nid) {
+		drupal_goto("node/".$nid);	
+	}
+	else {
+		drupal_goto("rate");
+	}
+	
+	return $output;
+}
+
+function stake_set_add_form(&$node) {
+	$result = db_query("SELECT field_stake_parent_status_value FROM {content_type_stake} WHERE nid=%d", $node->nid);
+	$status = db_result($result);
+	
+	if (user_access("create stake_rate content") AND $status == 1) {
+		/*Get CCK Form*/
+		$stake = new stdClass();
+		$stake->type = 'stake_rate';
+		$stake->field_stake_parent_ref[0]['nid'] = $node->nid;
+
+		module_load_include('inc', 'node', 'node.pages');
+
+		$output .= drupal_get_form('stake_rate_node_form', $stake);
+	}
+	
+	return $output;
+}
+
+/**
+ * function
+ */
+function stake_get_cancel_title($nid){
+	$result = db_query("SELECT created FROM {node} WHERE nid=%d", $nid);
+	$created = db_result($result);
+	
+	$created_th = thai_time_format($created);
+	
+	return l($created_th, "node/".$nid);
+}
+
+function stake_get_cancel_end_title($nid){
+	$result = db_query("SELECT changed FROM {node} WHERE nid=%d", $nid);
+	$created = db_result($result);
+	
+	$created_th = thai_time_format($created);
+	
+	return $created_th;
+}
+
+/**
+ * function
+ */
+function stake_set_status(&$node){
+	$status = $node->field_stake_parent_status[0]['value'];
+	
+	/**/
+	if ($status == 1) {
+		db_query("UPDATE {content_type_stake} SET field_stake_parent_status_value=%d", 0);
+		db_query("UPDATE {content_type_stake} SET field_stake_parent_status_value=%d WHERE nid=%d", 1, $node->nid);
+	} 
+	
+	$result = db_query("SELECT nid FROM {content_type_stake_rate} WHERE field_stake_parent_ref_nid=%d", $node->nid);
+	
+	while ($nid = db_result($result)) {
+		db_query("UPDATE {content_type_stake_rate} SET field_stake_status_value=%d WHERE nid=%d", $status, $nid);
+	}
+}
+
+/**
+ * function
+ */
+function stake_set_disable(&$node){
+	$result = db_query("SELECT nid FROM {content_type_stake} WHERE field_stake_parent_status_value=%d", 1);
+	$old_stake_nid = db_result($result);
+	db_query("UPDATE {node} SET changed=%d WHERE nid=%d", time(), $old_stake_nid);
+	
+	
+	db_query("UPDATE {content_type_stake_rate} SET field_stake_status_value=%d", 0);
+	db_query("UPDATE {content_type_stake} SET field_stake_parent_status_value=%d", 0);
+	
+	db_query("UPDATE {content_type_stake} SET field_stake_parent_status_value=%d WHERE nid=%d", 1, $node->nid);
+}

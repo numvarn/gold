@@ -1,0 +1,6 @@
+; $Id$
+name = Transaction
+description = transaction manager
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

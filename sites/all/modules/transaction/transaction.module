@@ -1,0 +1,5588 @@
+<?php
+session_start();
+
+define('WITHDRAW', 4);
+define('OUTTIME', 6);
+define('CANCEL', 7);
+define('MONTH', 30);
+
+define('EXPIRE', 60);
+define('EXPIRE_2',150);
+
+define('UPPER_BOUND_COST', 100000);
+define('CANCEL_TERM', 7);
+define('RENEW_GAP', 1);
+// define('RENEW_ACCESS', FALSE);
+define('RENEW_ACCESS', TURE);
+
+define('EXPIRE_ONE_MONTH', 30);
+define('EXPIRE_FOUR_MONTH', 30);
+
+function transaction_perm() {
+	return array(
+		"add transaction"
+	);
+}
+
+function transaction_help($path, $arg) {
+	switch ($path) {
+		case 'transaction/all':
+		case 'customer':
+			drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-error-msg.css');
+			break;
+	}
+}
+
+/**
+ * Hook_menu
+ *
+ **/
+function transaction_menu() {
+	$items['node/%node/add-transaction'] = array(
+		'access callback' => 'transaction_access_add',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_add',
+    	'page arguments' => array(1),
+    	'title' =>  t("ออกตั๋วจำนำใหม่"),
+    	'weight' => 5,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/transaction-all'] = array(
+		'access callback' => 'transaction_access_add',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_show_all',
+    	'page arguments' => array(1),
+    	'title' =>  t("รายการจำนำทองทั้งหมด"),
+    	'weight' => 6,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/renew'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_renew',
+    	'page arguments' => array(1),
+    	'title' =>  t("ต่อตั๋วจำนำ"),
+    	'weight' => 6,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/reduce'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_reduce',
+    	'page arguments' => array(1),
+    	'title' =>  t("ลดยอดเงินต้น"),
+    	'weight' => 7,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/add-cost'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_add_cost',
+    	'page arguments' => array(1),
+    	'title' =>  t("เพิ่มยอดเงินต้น"),
+    	'weight' => 8,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/withdraw'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_withdraw',
+    	'page arguments' => array(1),
+    	'title' =>  t("ไถ่ถอนบางส่วน"),
+    	'weight' => 9,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/close'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_close',
+    	'page arguments' => array(1),
+    	'title' =>  t("ไถ่ถอนทั้งหมด"),
+    	'weight' => 10,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['node/%node/reprint'] = array(
+		'access callback' => 'transaction_renew_check_access',
+		'access arguments' => array(1),
+    	'page callback' => 'transaction_reprint',
+    	'page arguments' => array(1),
+    	'title' =>  t("บันทึกตั๋วหาย"),
+    	'weight' => 11,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['transaction/add-detial/%transaction_id/%transaction_product_id'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_insert_detail',
+    	'page arguments' => array(2, 3),
+    	'title' =>  t("รายละเอียดการจำนำ"),
+    	'weight' => 5,
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	$items['transaction/session/dellete-detail/%transaction_product_id/%transaction_session_index/%transaction_current_nid'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_delete_session_detail',
+    	'page arguments' => array(3, 4, 5),
+    	'title' =>  t("ลบรายการชั่วคราวในตั๋วจำนำ"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	$items['transaction/session/clear-detail/%transaction_current_nid'] = array(
+		'access arguments' => array("add transaction"),
+		'page callback' => 'transaction_clear_session_detail',
+		'page arguments' => array(3),
+		'title' =>  t("ลบรายการชั่วคราวในตั๋วจำนำ"),
+		'type' => MENU_CALL_BACK,
+	);
+
+	$items['transaction/ticket/search'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_ticket_search',
+    	'title' =>  t("ระบุชื่อลูกค้า"),
+    	'weight' => 0,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['transaction/ticket/new'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_ticket_new',
+    	'title' =>  t("เพิ่มลูกค้าใหม่"),
+    	'weight' => 2,
+    	'type' => MENU_LOCAL_TASK,
+  	);
+
+	$items['customer/autocomplete'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_customer_autocomplete',
+    	'title' =>  t("ดึงข้อมูลชื่อลูกค้า"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	$items['transaction/print/%node'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_print_ticket',
+		'page arguments' => array(2),
+    	'title' =>  t("พิมพ์ตั๋ว่จำนำ"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+  	$items['transaction/pre-print/%node'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_preprint_ticket',
+		'page arguments' => array(2),
+    	'title' =>  t("พิมพ์ตั๋ว่จำนำ"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	$items['transaction/print/%node/confirm'] = array(
+		'access arguments' => array("add transaction"),
+    	'page callback' => 'transaction_print_ticket_confirm',
+		'page arguments' => array(2),
+    	'title' =>  t("พิมพ์ตั๋ว่จำนำ"),
+    	'type' => MENU_CALL_BACK,
+  	);
+
+	return $items;
+}
+
+function transaction_id_load($arg) {
+	return $arg;
+}
+
+function transaction_product_id_load($arg) {
+	return $arg;
+}
+
+function transaction_session_index_load($arg) {
+	return $arg;
+}
+
+function transaction_current_nid_load($arg) {
+	return $arg;
+}
+
+function transaction_nodeapi(&$node, $op, $a3=NULL, $a4=NULL) {
+	if ($node->type == "transaction_gold") {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				transaction_check_edit_status($node);
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-fieldgroup.css');
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-delete-button.css');
+				break;
+
+			case 'view':
+				$year = transaction_get_ticket_year($node);
+				drupal_set_title($node->field_transaction_code[0]['value'].'-'.$year);
+
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				drupal_add_js(drupal_get_path("module", 'custom_js')."/jquery.popupWindow.js");
+
+				$node->content['trasaction_loss_status'] = array(
+					'#value' => transaction_check_lost($node),
+					'#weight' => 10
+				);
+
+				$node->content['trasaction_detail_type'] = array(
+					'#value' => transaction_detail($node),
+					'#weight' => 10
+				);
+
+				$node->content['trasaction_stake_calculate'] = array(
+					'#value' => '', //transaction_show_payment_reate($node),
+					'#weight' => 10
+				);
+
+				$node->content['trasaction_renew'] = array(
+					'#value' => trasaction_renew_show_link($node),
+					'#weight' => 10
+				);
+
+				$node->content['trasaction_renew_parent'] = array(
+					'#value' => transaction_renew_link_parent($node),
+					'#weight' => 10
+				);
+
+				break;
+
+			case 'update':
+				transaction_add_withdraw($node);
+				transaction_set_ticket_status($node);
+				break;
+			case 'delete':
+				transaction_delete_all_detail($node);
+				break;
+		}
+	}
+	elseif ($node->type == "transaction_detail") {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-fieldgroup.css');
+				transaction_detail_check_status($node);
+				break;
+			case 'view':
+				drupal_set_title("รายละเอียดการจำนำ");
+				trasaction_detail_page_breadcrumb($node);
+				break;
+			case 'insert':
+			case 'update':
+				transaction_set_stake_rate($node);
+				break;
+		}
+	}
+	elseif ($node->type == "gold_category") {
+		switch ($op) {
+			case 'view':
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				break;
+			case 'prepare':
+			case 'validate':
+				employee_customer_breadcrumb();
+				break;
+		}
+	}
+	elseif ($node->type == "stake_rate") {
+		switch ($op) {
+			case 'prepare':
+			case 'validate':
+				drupal_set_title("กำหนดอัตราดอกเบี้ย");
+				employee_customer_breadcrumb();
+				drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+				break;
+		}
+	}
+}
+
+function transaction_reprint(&$node) {
+	$output = '';
+
+	$output .= drupal_get_form(transaction_print_version_form, $node->nid);
+
+	return $output;
+}
+
+function transaction_check_lost(&$node) {
+	$output = '';
+
+	$status = db_result(db_query("SELECT field_transaction_print_loss_value
+								  FROM {content_type_transaction_gold}
+								  WHERE nid=%d AND field_transaction_print_loss_value IS NOT NULL", $node->nid));
+
+	if ($status == "") {
+		$status = 100;
+	}
+
+	if ($status == 0) {
+		$version = db_result(db_query("SELECT field_transaction_print_no_value FROM {content_type_transaction_gold} WHERE nid=%d", $node->nid));
+		$lost_date = db_result(db_query("SELECT field_transaction_print_date_value FROM {content_type_transaction_gold} WHERE nid=%d", $node->nid));
+		$output .= '<div class="lost-msg">'.t("สถานะ : มีการบันทึกการทำตั๋วหาย ครั้งที่ ".$version." บันทึกวันที่ ".thai_time_format($lost_date, 'd-F-Y')).'</div>';
+	}
+	return $output;
+}
+
+function transaction_print_ticket_confirm(&$node) {
+	$output = '';
+
+	$output .= '<style type="text/css" media="screen">
+					.label,
+					#edit-version-wrapper,
+					#edit-lost {
+						margin:10px 0px;
+					}
+
+					.container {
+						margin-top:30px;
+						text-align:center;
+					}
+				</style>';
+
+	$output .= '<div class="container">
+					<div class="label">'.t("เลือกครั้งที่พิมพ์").'</div>
+					'.drupal_get_form(transaction_print_version_form, $node->nid).'
+				</div>';
+	echo $output;
+}
+
+/**
+ * function
+ */
+function transaction_print_version_form($form_state, $nid){
+	$result = db_query("SELECT field_transaction_print_no_value as version
+						FROM {content_type_transaction_gold}
+						WHERE nid=%d", $nid);
+
+	$version = db_result($result);
+
+	if ($version == "") {
+		$version = 1;
+	}
+	else {
+		$version++;
+	}
+
+	for ($i=1; $i <= $version; $i++) {
+		$list[$i] = $i;
+	}
+
+	$form = array();
+	$form['version'] = array(
+		'#type' => 'select',
+		'#title' => t("เลือกครั้งที่ตั๋วหาย"),
+		'#options' => $list,
+		'#default_value' => array($version),
+	);
+	$form['nid'] = array(
+		'#type' => 'value',
+		'#value' => $nid
+	);
+	$form['lost'] = array(
+		'#type' => 'select',
+		'#options' => array(0=>'ตั๋วหาย', 1=>'พิมพ์ซ้ำ'),
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => 'บันทึกตั๋วหาย'
+	);
+	return $form;
+}
+
+/**
+ * function
+ */
+function transaction_print_version_form_submit($form_id, &$form_state){
+	$nid = $form_state['values']['nid'];
+	$version = $form_state['values']['version'];
+	$loss = $form_state['values']['lost'];
+
+	db_query("UPDATE {content_type_transaction_gold}
+			  SET field_transaction_print_no_value=%d,
+			 	  field_transaction_print_date_value=%d,
+			 	  field_transaction_print_loss_value=%d
+			  WHERE nid=%d", $version, time(), $loss, $nid);
+
+	// $form_state['redirect'] = 'transaction/print/'.$nid;
+	$form_state['redirect'] = 'node/'.$nid;
+}
+
+
+/**
+ * function
+ */
+function transaction_print_linke($nid){
+	$fag = transaction_renew_check_edit_access(node_load($nid));
+
+	if ($fag) {
+		$path  = 'http://'.$_SERVER['SERVER_NAME'].base_path();
+		$icon  = $path.drupal_get_path('theme', 'ninesixtyrobots').'/images/printerIcon.png';
+
+		$link  = '<a href="'.$path.'transaction/pre-print/'.$nid.'" title="'.t("พิมพ์ตั๋ว").'" class="example1demo"><img src="'.$icon.'" /></a>';
+		$link .= '<script type="text/javascript">
+					$(".example1demo").popupWindow({
+						height:520,
+						width:780,
+						top:50,
+						left:50
+					});
+				 </script>';
+	}
+	else {
+		$link = '';
+	}
+
+	return $link;
+}
+
+/**
+ * function
+ */
+function transaction_cron_run(){
+	if (user_access('perform backup')) {
+		$current = time();
+		$cron_last = variable_get('cron_last', $default);
+
+		$diff = thai_time_get_interval_hour($cron_last, $current);
+
+		if ($diff > 0) {
+			drupal_set_message("กระบวนการ Cron เสร็จสิ้น");
+			drupal_cron_run();
+		}
+
+	}
+}
+
+/**
+ * function
+ */
+function transaction_set_ticket_status(&$node){
+	$term = 0;
+	if ($node->field_transaction_ticket_status[0]['value'] == 1) {
+		$term = CANCEL_TERM;
+	}
+	else {
+		$term = 5;
+	}
+
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_status_value=%d WHERE nid=%d", $term, $node->nid);
+
+	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $node->nid, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", $term, $node->nid, $old_term);
+
+	/*enable parent transaction*/
+	if ($term == CANCEL_TERM && $node->field_transaction_old_ref[0]['nid']) {
+		db_query("UPDATE {content_type_transaction_gold}
+				  SET field_transaction_status_value=%d,
+				      field_transaction_stake_pay_value=null,
+				      field_transaction_reduce_pay_value=null,
+					  field_transaction_add_pay_value=null,
+					  field_transac_withdraw_pay_value=null,
+					  field_transaction_close_pay_value=null,
+					  field_transaction_withdraw_item_value=null,
+				      field_transaction_operation_date_value=null
+				  WHERE nid=%d", 5, $node->field_transaction_old_ref[0]['nid']);
+
+		$old_term = db_result(db_query("SELECT t.tid
+								   		FROM {term_node} t
+								   		INNER JOIN {term_data} d ON d.tid=t.tid
+								   		WHERE nid=%d AND d.vid=%d", $node->field_transaction_old_ref[0]['nid'], 2));
+
+		db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 5, $node->field_transaction_old_ref[0]['nid'], $old_term);
+	}
+
+	if ($term == CANCEL_TERM) {
+		db_query("UPDATE {content_type_transaction_gold}
+				  SET field_transaction_no_value=null,
+					  field_transaction_cancel_date_value='%s' WHERE nid=%d", time(), $node->nid);
+	}
+
+}
+
+/**
+ * Register new theme
+ */
+function transaction_theme() {
+	return array(
+		'transaction_insert_detail_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_renew_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_reduce_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_withdraw_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_close_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_add_cost_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+
+		'transaction_customer_search_form' => array(
+			'arguments' => array('form' => NULL)
+			),
+		'transaction_adjust_form' => array(
+			'arguments' => array('form' => NULL)
+		),
+	);
+}
+
+function theme_transaction_insert_detail_form($form) {
+	$output = '<div id="insert-detail">
+					<div class="grid_4 row1">
+						'.drupal_render($form['product_ref']).'
+					</div>
+					<div class="grid_3 row1">
+						'.drupal_render($form['amount']).'
+					</div>
+
+					<div class="clear-block"></div>
+
+					<div class="grid_4 row3">
+						'.drupal_render($form['gold_weight']).'
+					</div>
+					<div class="grid_3 row3">
+						'.drupal_render($form['gold_weight_unit']).'
+					</div>
+
+					<div class="clear-block"></div>
+
+					<div class="grid_4 row2">
+						'.drupal_render($form['cost']).'
+					</div>
+					<div class="grid_3 row2">
+						'.t("บาท").'
+					</div>
+
+					<div class="clear-block"></div>
+
+			   </div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+function theme_transaction_customer_search_form($form) {
+	$output = '<div id="customer-search">
+
+					<div class="grid_4 row1">
+						'.drupal_render($form['name']).'
+					</div>
+
+					<div class="grid_3 row1">
+						'.drupal_render($form['submit']).'
+					</div>
+
+					<div class="clear-block"></div>
+
+				</div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+function theme_transaction_renew_form($form) {
+	$rows[] = array(
+		array('class'=>'stake-show', 'data'=>drupal_render($form['stake_show'])),
+		array('class'=>'date-show', 'data'=>drupal_render($form['date_renew_display-1'])),
+		array('class'=>'date-show-next', 'data'=>drupal_render($form['date_renew_display-end-1'])),
+		array('class'=>'employee', 'data'=>drupal_render($form['renewer'])),
+		array('class'=>'submit', 'data'=>drupal_render($form['submit'])),
+	);
+
+	$header = array(
+		"ดอกเบี้ย",
+		"วันที่ออกตั๋วใหม่",
+		"วันที่ตั๋วครบกำหนด",
+		"ผู้รับต่อตั๋ว",
+		"ดำเนินการ"
+	);
+
+	$size = $form['end_date_size']['#value'];
+
+	$nid = $form['transaction_old']['#value'];
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $nid);
+	$type = db_result($result);
+
+	if ($size > 1 && $type != 0) {
+		$choice = '<div class="choice">
+						<span class="input"><input type="radio" name="choice" value="1" checked /></span>
+						<span class="label">'.t("ต่ออายุ 1 เดือน").'</span>
+
+						<span class="input"><input type="radio" name="choice" value="2" /></span>
+						<span class="label">'.t("ต่ออายุ 2 เดือน (จ่ายล่วงหน้า)").'</span>
+				  </div>';
+	}
+	else {
+		$choice = '<div class="choice">
+						<span class="input"><input type="radio" name="choice" value="1" checked /></span>
+						<span class="label">'.t("ต่ออายุ 1 เดือน").'</span>
+
+						<span class="input"><input type="radio" name="choice" value="2" /></span>
+						<span class="label">'.t("ต่ออายุ 2 เดือน").'</span>
+
+						<span class="input"><input type="radio" name="choice" value="3" /></span>
+						<span class="label">'.t("ต่ออายุ 3 เดือน").'</span>
+
+						<span class="input"><input type="radio" name="choice" value="4" /></span>
+						<span class="label">'.t("ต่ออายุ 4 เดือน").'</span>
+				  </div>';
+	}
+
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $nid);
+	$ticket_type = db_result($result);
+
+	$output .= '<div class="renew-wrapper">';
+
+	if ($ticket_type != 1) {
+		$output .= $choice;
+	}
+
+	$output .= '<div class="renew-form">
+					'.theme('table', $header, $rows).'
+				</div>';
+	$output .= '</div>';
+
+	$output .= '<div class="renew-hidden">'.drupal_render($form).'</div>';
+
+	return $output;
+}
+
+function transaction_detail_check_status(&$detail) {
+	$status = db_result(db_query("SELECT field_transaction_status_value
+								  FROM {content_type_transaction_gold}
+								  WHERE nid=%d", $detail->field_transaction_ref[0]['nid']));
+	if ($status == WITHDRAW ||
+		$status == OUTTIME ||
+		$status == CANCEL)  {
+		drupal_access_denied();
+		die();
+	}
+	else {
+		return TRUE;
+	}
+}
+
+function transaction_delete_all_detail($node) {
+	/**
+	 * Delete all detail when transaction deleted
+	 */
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $node->nid);
+	while ($detail_nid = db_result($result)) {
+		node_delete($detail_nid);
+	}
+}
+
+function transaction_set_stake_rate(&$detail) {
+	$transaction_nid = $detail->field_transaction_ref[0]['nid'];
+	$result = db_query("SELECT field_transaction_cost_value
+						FROM {content_type_transaction_detail}
+						WHERE field_transaction_ref_nid=%d", $transaction_nid);
+
+	$total = 0;
+
+	while ($cost = db_result($result)) {
+		$total += $cost;
+	}
+
+	$rate = transaction_get_stake_rate($total);
+
+	db_query("UPDATE {content_type_transaction_gold}
+			  SET field_transaction_stake_rate_value=%f
+			  WHERE nid=%d", $rate, $transaction_nid);
+
+	// drupal_flush_all_caches();
+}
+
+function trasaction_add_link($profile_nid) {
+	return l("ออกตั๋ว", "node/".$profile_nid."/add-transaction", array('fragment'=>'list'));
+}
+
+function transaction_show_payment_reate($transaction) {
+	$output  = '';
+	$foo = db_fetch_object(db_query("SELECT field_transaction_stake_pay_value,
+											field_transaction_operation_date_value,
+											field_transaction_reduce_pay_value,
+											field_transaction_total_cost_value
+									 FROM {content_type_transaction_gold}
+									 WHERE nid=%d", $transaction->nid));
+
+	if (!$foo->field_transaction_stake_pay_value) {
+		$output .= trasaction_stake_calculate($transaction);
+	}
+
+	// Choice for Select
+	/*
+	else {
+		$remain = $foo->field_transaction_total_cost_value - $foo->field_transaction_reduce_pay_value;
+		$rows = array();
+		$rows[] = array(
+			array('class' => 'date', 'data' => thai_time_format($foo->field_transaction_operation_date_value, 'd-F-Y', 1)),
+			array('class' => 'stake', 'data' => number_format($foo->field_transaction_stake_pay_value)),
+			array('class' => 'reduce', 'data' => number_format($foo->field_transaction_reduce_pay_value)),
+			array('class' => '', 'data' => number_format($remain)),
+		);
+
+		$header = array(
+			t("วันที่ดำเนินการ"),
+			t("จำนวนดอกเบี้ยที่จ่าย<br />(บาท)"),
+			t("จำนวนต้นที่จ่าย<br />(กรณีลดยอด หรือไถ่ถอน)"),
+			t("จำนวนต้นที่เหลือ<br />(บาท)"),
+		);
+
+		$output .= '<div class="payment-conclusion">
+						<div class="view-title">รายระเอียดการชำระเงิน</div>
+						'.theme('table', $header, $rows).'
+					</div>';
+	}
+	*/
+	return $output;
+}
+
+function trasaction_stake_calculate(&$transaction, $opr=NULL) {
+	$output  = '';
+
+	/*Check status*/
+	$status_fag = transaction_get_status($transaction);
+
+	$tpm = db_fetch_object(db_query("SELECT field_transaction_stake_rate_value,
+		  							 		field_transaction_total_cost_value
+									 FROM {content_type_transaction_gold}
+									 WHERE nid=%d", $transaction->nid));
+
+	$transaction->field_transaction_total_cost[0]['value'] = $tpm->field_transaction_total_cost_value;
+	$transaction->field_transaction_stake_rate[0]['value'] = $tpm->field_transaction_stake_rate_value;
+
+	if ($transaction->field_transaction_stake_rate[0]['value'] != "") {
+		$stake = $transaction->field_transaction_total_cost[0]['value'] *
+				 ($transaction->field_transaction_stake_rate[0]['value'] / 100);
+
+		/**
+		 * Pre-Count for find upper-bound
+		 */
+		$pre_count = 1;
+		$end_date = '';
+
+		$end_date_array = array();
+		$current_date = time();
+
+		while ($end_date <= $current_date) {
+			if ($pre_count == 1) {
+				$start_date = $transaction->created;
+			}
+			else {
+				$start_date = $end_date;
+			}
+
+			$end_date = transaction_calulate_interval_thai($start_date);
+			$end_date_array[] = $end_date;
+
+			$pre_count++;
+		}
+		//end while
+
+		/**
+		 * Get Date Point
+		 */
+		if ($opr == 'reduce' || $opr == 'renew' || $opr == 'add_cost' || $opr == 'withdraw' || $opr == 'close') {
+			$stake_array = array();
+
+			$point_index = 0;
+
+			/**
+			 * Very Important Variable
+			 **/
+			$real_end_date = $end_date_array[$point_index];
+
+			if ($transaction->field_transaction_interval_type[0]['value'] == 0) {
+				$day   = format_date($real_end_date, 'custom', 'd');
+				$month = format_date($real_end_date, 'custom', 'm');
+				$year  = format_date($real_end_date, 'custom', 'Y');
+
+				$real_end_date = mktime(0, 0, 0, $month+3, $day, $year);
+			}
+
+		}
+
+		/*determine last row*/
+		$last = $pre_count - 1;
+
+		$count = 1;
+		$end_date = '';
+		$remain_stake = 0;
+
+		/*Check Expire Time*/
+		$interval_day = thai_time_get_interval_day($transaction->created, $current_date);
+
+		/**
+		 * pre-calculate stake
+		 */
+		while ($end_date <= $current_date) {
+			if ($count == 1) {
+				$start_date = $transaction->created;
+			}
+			else {
+				$start_date = $end_date;
+			}
+
+			/**
+			 *define remain stake rate && calculate total money
+			 */
+			$remain_stake = $stake * $count;
+
+			$total_money = $remain_stake + $transaction->field_transaction_total_cost[0]['value'];
+
+			/**
+			 * reduce mode or renew mode
+			 */
+			if ($opr == 'reduce' || $opr == 'renew' || $opr == 'add_cost' || $opr == 'withdraw' || $opr == 'close') {
+				$stake_array[] = $remain_stake;
+			}
+
+			/**
+			 * Get end day
+			 */
+			$end_date = transaction_calulate_interval_thai($start_date);
+
+			$count++;
+
+		}
+		// end while
+
+		/**
+		 * Render Form
+		 */
+		$this_time = time();
+
+		$check_holliday = transaction_check_holiday($this_time);
+
+		if ($this_time <= $real_end_date || $check_holliday) {
+			$render = TRUE;
+		}
+		else {
+			$interval_check = thai_time_get_interval_day($real_end_date, $this_time);
+
+			if ($transaction->field_transaction_interval_type[0]['value'] == 0) {
+				$exprie_check = EXPIRE_FOUR_MONTH;
+			}
+			elseif ($transaction->field_transaction_interval_type[0]['value'] == 1) {
+				$exprie_check = EXPIRE_ONE_MONTH;
+			}
+
+			if ($interval_check <= $exprie_check) {
+				$render = TRUE;
+			}
+			else {
+				$render = FALSE;
+			}
+
+		}
+
+		if ($render) {
+			drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-field.css');
+			drupal_add_js(drupal_get_path("module", 'custom_js')."/jquery.number_format.js");
+			drupal_add_js(drupal_get_path("module", 'custom_js')."/sum_reduce.js");
+			drupal_add_js(drupal_get_path("module", 'custom_js')."/sum_add_cost.js");
+
+			if ($opr == "renew") {
+				drupal_add_js(drupal_get_path("module", 'custom_js')."/renew.js");
+				$output .= transaction_renew_stake_announce_message($stake_array[$point_index], $real_end_date, $opr);
+				$output .= drupal_get_form(transaction_renew_form, $transaction->nid, $stake_array, $end_date_array, $real_end_date);
+			}
+			elseif ($opr == "reduce") {
+				$output .= transaction_reduce_stake_announce_message($stake_array[$point_index], $real_end_date, $total_money, $transaction->nid, $opr);
+				$output .= drupal_get_form(transaction_reduce_form, $transaction->nid, $stake_array[$point_index], $real_end_date);
+			}
+			elseif ($opr == 'add_cost') {
+				$output .= transaction_reduce_stake_announce_message($stake_array[$point_index], $real_end_date, $total_money, $transaction->nid, $opr);
+				$output .= drupal_get_form(transaction_add_cost_form, $transaction->nid, $stake_array[$point_index], $real_end_date);
+			}
+			elseif ($opr == 'withdraw') {
+				drupal_add_js(drupal_get_path("module", 'custom_js')."/withdraw.js");
+				$output .= transaction_reduce_stake_announce_message($stake_array[$point_index], $real_end_date, $total_money, $transaction->nid, $opr);
+				$output .= transaction_adjust_detail_select();
+				$output .= drupal_get_form(transaction_withdraw_form, $transaction->nid, $stake_array[$point_index], $real_end_date);
+				$output .= drupal_get_form(transaction_adjust_form, $transaction->nid);
+			}
+			elseif ($opr == 'close') {
+				$output .= transaction_renew_stake_announce_message($stake_array[$point_index], $real_end_date, $opr);
+				$output .= drupal_get_form(transaction_close_form, $transaction->nid, $stake_array[$point_index], $real_end_date);
+			}
+
+			$output .= '<div id="result"></div>';
+		}
+		else {
+			$output .= '<div class="empty-result">'.t("ตั๋วหมดอายุ เลยกำหนดการต่อตั๋วมา !interval_check วัน", array('!interval_check'=>$interval_check	)).'</div>';
+		}
+
+		return $output;
+	}
+}
+
+function transaction_calulate_interval_thai($start_date_stamp) {
+	$day   = format_date($start_date_stamp, 'custom', 'd');
+	$month = format_date($start_date_stamp, 'custom', 'm');
+	$year  = format_date($start_date_stamp, 'custom', 'Y');
+
+	$end_date_stamp = mktime(0, 0, 0, $month+1, $day, $year);
+
+	return $end_date_stamp;
+}
+
+function transaction_calulate_interval_end_thai_4_month($start_date_stamp) {
+	$day   = format_date($start_date_stamp, 'custom', 'd');
+	$month = format_date($start_date_stamp, 'custom', 'm');
+	$year  = format_date($start_date_stamp, 'custom', 'Y');
+
+	$end_date_stamp = mktime(0, 0, 0, $month+4, $day, $year);
+
+	return $end_date_stamp;
+}
+
+/**
+ * Get stake rate
+ */
+function transaction_get_stake_rate($total_money) {
+	$rate = db_result(db_query("SELECT s.field_stake_percent_value
+		 						FROM {content_type_stake_rate} s
+								WHERE field_stake_lower_value <= %d AND
+									  field_stake_upper_value >= %d AND
+									  field_stake_status_value=%d ORDER BY nid DESC LIMIT 1", $total_money, $total_money, 1));
+	return $rate;
+}
+
+function transaction_add_withdraw(&$node) {
+	$fag = db_result(db_query("SELECT field_transaction_status_value
+							   FROM  {content_type_transaction_gold}
+							   WHERE nid=%d", $node->nid));
+
+	if ($node->field_transaction_status[0]['value'] == 4) {
+		$date = time();
+	}
+	else {
+		$date = NULL;
+	}
+
+	db_query("UPDATE {content_type_transaction_gold}
+			  SET field_transaction_withdraw_date_value='%s'
+			  WHERE nid=%d", $date, $node->nid);
+}
+
+function transaction_get_withdraw_date_thai($nid) {
+	$date = db_result(db_query("SELECT field_transaction_withdraw_date_value
+								FROM {content_type_transaction_gold}
+								WHERE nid=%d", $nid));
+
+	if ($date) {
+		$msg  = thai_time_format($date, 'd-F-Y', 1);
+		$msg .= ", ".format_date($date, 'custom', 'H:i');
+		return $msg;
+	}else {
+		return "ยังไม่มีการไถ่ถอน";
+	}
+}
+
+function transaction_access_add(&$node) {
+	$access = FALSE;
+	if ($node->type == 'customer_profile' &&
+		user_access('add transaction')) {
+		$access = TRUE;
+	}
+	return $access;
+}
+
+function transaction_renew_check_access(&$node) {
+	$access = FALSE;
+
+	$result = db_query("SELECT field_transaction_status_value FROM {content_type_transaction_gold} WHERE nid=%d", $node->nid);
+	$node->field_transaction_status[0]['value'] = db_result($result);
+
+	/*check transaction status*/
+	$check = db_result(db_query("SELECT field_transaction_stake_pay_value
+								 FROM {content_type_transaction_gold}
+								 WHERE nid=%d", $node->nid));
+
+	if ($node->type == 'transaction_gold' &&
+		$check == "" &&
+		user_access('add transaction') &&
+		$node->field_transaction_status[0]['value'] != CANCEL_TERM &&
+		$node->field_transaction_status[0]['value'] != 6) {
+			$access = TRUE;
+	}
+
+	/*check interval for next operation*/
+	$current_date = time();
+	$interval_gap = intval(thai_time_get_interval_day($node->created, $current_date));
+
+	if ($interval_gap <= RENEW_GAP && !RENEW_ACCESS) {
+		$access = FALSE;
+	}
+
+	return $access;
+}
+
+function transaction_renew_check_edit_access(&$node) {
+	$access = FALSE;
+
+	/*check transaction status*/
+	$check = db_result(db_query("SELECT field_transaction_stake_pay_value
+								 FROM {content_type_transaction_gold}
+								 WHERE nid=%d", $node->nid));
+
+	if ($node->type == 'transaction_gold' &&
+		$check == "" &&
+		$node->field_transaction_status[0]['value'] != CANCEL_TERM &&
+		$node->field_transaction_status[0]['value'] != 6 &&
+		user_access('add transaction')) {
+			$access = TRUE;
+	}
+	return $access;
+}
+
+function transaction_check_edit_status(&$node) {
+
+	$result = db_query("SELECT field_transaction_status_value FROM {content_type_transaction_gold} WHERE nid=%d", $node->nid);
+	$node->field_transaction_status[0]['value'] = db_result($result);
+
+	if (!transaction_renew_check_edit_access($node)) {
+
+		if ($node->field_transaction_status[0]['value'] == CANCEL_TERM) {
+			drupal_set_message(t("ตั๋วจำนำหมายเลข #code ได้ถูกยกเลิกแล้ว", array('#code' => $node->field_transaction_code[0]['value'])), "error");
+		}
+		if ($node->field_transaction_status[0]['value'] == 6) {
+			drupal_set_message(t("ตั๋วจำนำหมายเลข #code ได้หมดอายุแล้ว", array('#code' => $node->field_transaction_code[0]['value'])), "error");
+		}
+		else {
+			drupal_set_message(t("ตั๋วจำนำหมายเลข #code ได้ถูกต่ออายุ หรือไถ่ถอนแล้วแล้ว", array('#code' => $node->field_transaction_code[0]['value'])), "error");
+		}
+
+		drupal_access_denied();
+		die();
+	}
+}
+
+function transaction_detail($transaction) {
+	$output = '';
+
+	$rows = array();
+	$rows_index = 1;
+	$cost_total = 0;
+
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transaction->nid);
+	while ($detail = db_fetch_object($result)) {
+		$type_str = db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $detail->field_gold_type_ref_nid));
+
+		/*calculate value*/
+		$reduce   = intval($detail->field_detail_reduce_cost_value);
+		$add_cost = intval($detail->field_detail_add_cost_value);
+
+		$remain_value = ($detail->field_transaction_cost_value + $add_cost) - $reduce;
+
+		$rows[] = array(
+			array('class'=>'no', 'data'=>$rows_index),
+			array('class'=>'type', 'data'=>$type_str),
+			array('class'=>'', 'data'=>$detail->field_transaction_sub_detail_value),
+			array('class'=>'weight', 'data'=>$detail->field_transaction_value_value),
+			array('class'=>'weight', 'data'=>$detail->field_transaction_weight_value),
+			array('class'=>'unit', 'data'=>$detail->field_transaction_unit_value),
+			array('class'=>'cost', 'data'=>number_format($remain_value)),
+		);
+
+		$cost_total += $remain_value;
+		$rows_index++;
+	}
+	//end while
+
+	$rows[] = array(
+		array('class'=>'total-lable', 'data'=>'รวม', 'colspan'=>3),
+		array('class'=>'total-lable', 'data'=>$transaction->field_transaction_money_str[0]['value'], 'colspan'=>3),
+		array('class'=>'cost total', 'data'=>number_format($cost_total)),
+	);
+
+
+	$header = array(
+		"ลำดับที่",
+		"ประเภท",
+		"รายละเอียด",
+		"จำนวน",
+		"น้ำหนัก",
+		"หน่วยวัด",
+		"จำนวนเงิน (บาท)",
+	);
+
+	 $output .= '<div class="detail-list">
+					<div class="views-title">'.t("รายละเอียดทองที่จำนำ").'</div>
+	 				'.theme('table', $header, $rows).'
+	 			</div>';
+
+	$output .= transaction_reduce_record($transaction->nid, $cost_total);
+
+	/*update total cost*/
+	if ($transaction->field_transaction_reduce_pay[0]['value'] == "" && $transaction->field_transaction_old_ref[0]['nid'] == "") {
+		db_query("UPDATE {content_type_transaction_gold}
+				  SET field_transaction_total_cost_value=%d
+				  WHERE nid=%d", $cost_total, $transaction->nid);
+	}
+
+	return $output;
+}
+
+function transaction_reduce_record($transac_nid, $cost_total) {
+	$output = '';
+	$old = "";
+	$count = 1;
+
+	$total_stake = 0;
+	$total_reduce = 0;
+	$total_add = 0;
+	$total_withdraw = 0;
+	$start_total_cost = 0;
+
+	$current_transaction_nid = $transac_nid;
+
+	while (TRUE) {
+		$old = db_fetch_object(db_query("SELECT field_transaction_old_ref_nid,
+												field_transaction_code_value,
+												field_transaction_reduce_pay_value,
+												field_transaction_add_pay_value,
+												field_transaction_stake_pay_value,
+												field_transaction_operation_date_value,
+												field_transac_withdraw_pay_value,
+												field_transaction_total_cost_value,
+												field_transaction_close_pay_value,
+												nid
+										 FROM {content_type_transaction_gold}
+										 WHERE nid=%d AND field_transaction_status_value!=%d ORDER BY nid DESC", $transac_nid, CANCEL_TERM));
+
+		if ($old == "") {
+			break;
+		}else {
+			/*keep close cost*/
+			if ($old->field_transaction_close_pay_value != "") {
+				$close_pay = $old->field_transaction_close_pay_value;
+			}
+
+			$start_total_cost = $old->field_transaction_total_cost_value;
+
+			$transac_nid = $old->field_transaction_old_ref_nid;
+
+			$total_stake += $old->field_transaction_stake_pay_value;
+			$total_reduce += $old->field_transaction_reduce_pay_value;
+			$total_add += $old->field_transaction_add_pay_value;
+			$total_withdraw += $old->field_transac_withdraw_pay_value;
+
+			if ($old->field_transaction_operation_date_value != "") {
+				$date_str = thai_time_format($old->field_transaction_operation_date_value, 'd-F-Y', 1);
+			}else {
+				$date_str = '-';
+			}
+
+			if ($count == 1) {
+				$code_link = $old->field_transaction_code_value;
+			}
+			else {
+				$code_link = l($old->field_transaction_code_value, "node/".$old->nid);
+			}
+
+			$print_stake_pay = (number_format($old->field_transaction_stake_pay_value) == 0) ? "" : number_format($old->field_transaction_stake_pay_value) ;
+			$print_reduce_pay = (number_format($old->field_transaction_reduce_pay_value) == 0) ? "" : number_format($old->field_transaction_reduce_pay_value) ;
+			$print_add_pay = (number_format($old->field_transaction_add_pay_value) == 0) ? "" : number_format($old->field_transaction_add_pay_value) ;
+			$print_withdraw_pay = (number_format($old->field_transac_withdraw_pay_value) == 0) ? "" : number_format($old->field_transac_withdraw_pay_value) ;
+			$print_close_pay = (number_format($old->field_transaction_close_pay_value) == 0) ? "" : number_format($old->field_transaction_close_pay_value) ;
+
+			$rows[] = array(
+				array('class'=>'no', 'data'=>$count),
+				array('class'=>'code', 'data'=>$code_link),
+				array('class'=>'date', 'data'=>$date_str),
+				array('class'=>'stake', 'data'=>$print_stake_pay),
+				array('class'=>'reduce', 'data'=>$print_reduce_pay),
+				array('class'=>'add', 'data'=>$print_add_pay),
+				array('class'=>'add', 'data'=>$print_withdraw_pay),
+				array('class'=>'add', 'data'=>$print_close_pay),
+			);
+
+
+			$count++;
+			unset($old);
+		}
+	}
+	//end while
+
+	$rows[] = array(
+		array('class'=>'total-lable', 'data'=>'ยอดเงินรวมสำหรับ ลดยอด / เพิ่มยอด / ไถ่ถอนบางส่วน', 'colspan'=>4),
+		array('class'=>'cost total', 'data'=>number_format($total_reduce)),
+		array('class'=>'cost total', 'data'=>number_format($total_add)),
+		array('class'=>'cost total', 'data'=>number_format($total_withdraw)),
+		array('class'=>'cost total', 'data'=>$print_close_pay),
+	);
+
+	$rows[] = array(
+		array('class'=> 'table-spliter', 'colspan'=>7),
+	);
+
+	/**
+	 * Calculate remain cost
+	 */
+	$remain_cost = (($start_total_cost + $total_add) - $total_reduce) - $total_withdraw;
+
+	$remain_cost = (number_format($close_pay) == 0) ? $remain_cost : 0 ;
+
+	$rows[] = array(
+		array('class'=>'total-lable', 'data'=>'สรุปยอดเงิน', 'colspan'=>2, 'rowspan'=>2),
+		array('class'=>'total-remain', 'data'=>t("ยอดรวมดอกเบี้ย"), 'colspan'=>2),
+		array('class'=>'total-remain', 'data'=>t("ยอดจำนำเริ่มต้น"), 'colspan'=>2),
+		array('class'=>'total-remain', 'data'=>t("ยอดจำนำคงเหลือปัจจุบัน"), 'colspan'=>2),
+	);
+
+	$rows[] = array(
+		array('class'=>'total-conclude', 'data'=>number_format($total_stake), 'colspan' => 2),
+		array('class'=>'total-conclude', 'data'=>number_format($start_total_cost), 'colspan'=>2),
+		array('class'=>'total-conclude-remain', 'data'=>number_format($remain_cost), 'colspan'=>2),
+	);
+
+	$header = array(
+		"ลำดับที่",
+		"หมายเลขตั๋ว",
+		"วันที่ชำระ",
+		"ดอกเบี้ย",
+		"ลดยอด",
+		"เพิ่มยอด",
+		"ไถ่ถอนบางส่วน",
+		"ไถ่ถอน",
+	);
+
+	if ($total_stake) {
+		$output .= '<div class="detail-list-record">
+					<div class="view-title">สรุปการชำระย้อนหลังและยอดคงเหลือของเงินต้น</div>
+	 				'.theme('table', $header, $rows).'
+	 			</div>';
+
+		$output .= transaction_withdraw_detail_record($current_transaction_nid);
+	}
+
+	return $output;
+}
+
+function transaction_withdraw_detail_record($transaction_nid) {
+	$items = array();
+
+	while (TRUE) {
+		$transaction = db_fetch_object(db_query("SELECT field_transaction_code_value as code,
+			 											field_transaction_operation_date_value as opr_date
+												 FROM {content_type_transaction_gold}
+												 WHERE nid=%d", $transaction_nid));
+
+		$result = db_query("SELECT field_detail_withdraw_ref_nid FROM {content_field_detail_withdraw_ref} WHERE nid=%d", $transaction_nid);
+		while ($detail_nid = db_result($result)) {
+			$detail = db_fetch_object(db_query("SELECT n.title as type_name,
+													   d.nid,
+													   d.field_transaction_weight_value as weight,
+													   d.field_transaction_unit_value as unit,
+													   d.field_transaction_cost_value as cost,
+													   d.field_transaction_sub_detail_value as detail,
+													   d.field_detail_withdraw_weight_value as widthdraw_weight,
+													   d.field_detail_withdraw_cost_value as widthdraw_cost
+												FROM {content_type_transaction_detail} d
+												INNER JOIN {node} n ON n.nid=d.field_gold_type_ref_nid
+												WHERE d.nid=%d", $detail_nid));
+
+			if ($detail->widthdraw_cost == "") {
+				$detail->widthdraw_cost = $detail->cost;
+			}
+
+			if ($detail->widthdraw_weight == "") {
+				$detail->widthdraw_weight = $detail->weight;
+			}
+
+			$items[] = array(
+							array('class'=>'code', 'data'=>$transaction->code),
+							array('class'=>'type', 'data'=>$detail->type_name),
+							array('class'=>'weight', 'data'=>$detail->widthdraw_weight),
+							array('class'=>'unit', 'data'=>$detail->unit),
+							array('class'=>'cost', 'data'=>number_format($detail->widthdraw_cost)),
+							array('class'=>'detail', 'data'=>$detail->detail),
+							array('class'=>'detail', 'data'=>thai_time_format($transaction->opr_date, 'd-F-Y', 1)),
+						);
+		}
+		//end while
+
+		/**
+		 * Get Older Transaction
+		 */
+		$old_transaction = db_result(db_query("SELECT field_transaction_old_ref_nid FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_nid));
+		if ($old_transaction) {
+			$transaction_nid = $old_transaction;
+		}
+		else {
+			break;
+		}
+	}
+	//end while
+
+	$item_head = array(
+		t("ไถ่ถอนในตั๋ว"),
+		t("ประเภท"),
+		t("น.น. ตัดออก"),
+		t("หน่วยวัด"),
+		t("เงินไถ่ถอน"),
+		t("รายละเอียด"),
+		t("วันที่"),
+	);
+
+	if (count($items) != 0) {
+		$output .= '<div class="detail-withdraw-node-show">
+						<div class="view-title">'.t("บันทึกการไถ่ถอนบางส่วน").'</div>
+						'.theme('table', $item_head, $items).'
+					</div>';
+
+		return $output;
+	}
+}
+
+function transaction_insert_detail($tid, $pid) {
+	/*check status before render form*/
+	$status = db_result(db_query("SELECT field_transaction_status_value
+								  FROM {content_type_transaction_gold}
+								  WHERE nid=%d", $tid));
+	if ($status == WITHDRAW ||
+		$status == OUTTIME ||
+		$status == CANCEL)  {
+		drupal_access_denied();
+		die();
+	}
+	//end check
+
+	$output = '';
+
+	$transac = db_fetch_object(db_query("SELECT field_transaction_code_value
+										 FROM {content_type_transaction_gold}
+										 WHERE nid=%d", $tid));
+
+	$gold_type = db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $pid));
+
+	$rows = array();
+	$rows[] = array(
+		array('class'=>'label', 'data'=>t("หมายเลขตั๋วจำนำ")),
+		array('class'=>'data', 'data'=>l($transac->field_transaction_code_value, "node/".$tid)),
+	);
+
+	$rows[] = array(
+		array('class'=>'label', 'data'=>t("ประเภทของทอง")),
+		array('class'=>'data', 'data'=>$gold_type),
+	);
+
+	$output .= '<div class="transac-show-detail">
+					'.theme('table', $header, $rows).'
+				</div>';
+
+	$output .= drupal_get_form(transaction_insert_detail_form, $tid, $pid);
+	return $output;
+}
+
+function transaction_insert_detail_form(&$form_state, $tid=NULL, $pid=NULL, $edit=NULL) {
+	$form = array();
+
+	/*Edit Mode*/
+	if ($edit != NULL) {
+		/*set class to form*/
+		$form['#attributes'] = array('class' => 'edit-form');
+
+		$detail = $_SESSION['gold_list'][$edit['product_id']][$edit['index']];
+		$form['edit_mode'] = array(
+			'#type' => 'value',
+			'#value' => 1
+		);
+
+		$form['product_id_old'] = array(
+			'#type' => 'value',
+			'#value' => $edit['product_id']
+		);
+
+		$form['session_index_old'] = array(
+			'#type' => 'value',
+			'#value' => $edit['index']
+		);
+	}
+
+	/*--end edit mode--*/
+
+	if ($tid) {
+		$form['transaction_ref'] = array(
+			'#type' => 'value',
+			'#title' => t("หมายเลขตั๋ว"),
+			'#value' => $tid
+		);
+	}
+	else {
+		$form['current_profile_nid'] = array(
+			'#type' => 'value',
+			'#title' => t("หมายเลขประวัติ"),
+			'#value' => arg(1)
+		);
+	}
+
+	if ($pid) {
+		$form['product_ref'] = array(
+			'#type' => 'value',
+			'#title' => t("ประเภทสินค้า"),
+			'#value' => $pid
+		);
+	}
+	else {
+		$items = array();
+		$result = db_query("SELECT title, nid FROM {node} WHERE type='%s' ORDER BY nid ASC", 'gold_category');
+		while ($type = db_fetch_object($result)) {
+			$items[$type->nid] = $type->title;
+		}
+
+		$default_type = ($edit != NULL) ? $edit["product_id"] : "" ;
+		$form['product_ref'] = array(
+			'#type' => 'select',
+			'#title' => t("ประเภทสินค้า"),
+			'#options' => $items,
+			'#default_value' => array($default_type),
+			'#required' => TRUE
+		);
+	}
+
+	$default_amount = ($edit != NULL) ? $detail["#amount"] : 1 ;
+	for ($i=1; $i <= 100; $i++) {
+		$options_amount[$i] = $i;
+	}
+
+	$form['amount'] = array(
+		'#type' => 'select',
+		'#title' => t("จำนวน"),
+		'#description' => t("กรอกเป็นเลขจำนวนเต็มเท่านั้น"),
+		'#default_value' => array($default_amount),
+		'#options' => $options_amount,
+		'#required' => TRUE
+	);
+
+	$default_cost = ($edit != NULL) ? $detail["#cost"] : "" ;
+	$form['cost'] = array(
+		'#type' => 'textfield',
+		'#title' => t("ราคาจำนำ"),
+		'#description' => t("สามารถกรอกเป็นเลขทศนิยมได้ เช่น 100.50"),
+		'#attributes' => array('autocomplete'=>'off'),
+		'#default_value' => $default_cost,
+		'#required' => TRUE
+	);
+
+	$default_weight = ($edit != NULL) ? $detail["#weight"] : "" ;
+	$form['gold_weight'] = array(
+		'#type' => 'textfield',
+		'#title' => t("น้ำหนัก"),
+		'#description' => t("สามารถกรอกเป็นเลขทศนิยมได้ เช่น 1.50"),
+		'#attributes' => array('autocomplete'=>'off'),
+		'#default_value' => $default_weight,
+		'#required' => TRUE
+	);
+
+	$result = db_query("SELECT name FROM {term_data} WHERE vid=%d ORDER BY weight ASC", 3);
+	$options = array();
+	while ($term_name = db_result($result)) {
+		$options[$term_name] = $term_name;
+	}
+
+	$default_unit = ($edit != NULL) ? $detail["#unit"] : "" ;
+	$form['gold_weight_unit'] = array(
+		'#type' => 'select',
+		'#title' => t("หน่วยวัด"),
+		'#options' => $options,
+		'#default_value' => array($default_unit),
+		'#required' => TRUE
+	);
+
+	$default_detail = ($edit != NULL) ? $detail["#detail"] : "" ;
+	$form['detail'] = array(
+		'#type' => 'textarea',
+		'#title' => t("รายละเอียด"),
+		'#description' => t("ระบุรายละเอียดของสินค้า"),
+		'#default_value' => $default_detail,
+		'#rows' => 1,
+		'#required' => FALSE
+	);
+
+	$submit_label = ($edit != NULL) ? t("แก้ไขรายละเอียด") : t("เพิ่มข้อมูลการจำนำ") ;
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => $submit_label,
+		'#weight' => 50
+	);
+
+	if ($edit != NULL) {
+		$link_cancel = url("node/".arg(1)."/add-transaction", array('fragment'=>'list'));
+		$form['cancel'] = array(
+			'#type' => 'markup',
+			'#value' => '<input type="button" value="'.t('ยกเลิกการแก้ไข').'" onclick="window.location.replace(\''.$link_cancel.'\')">',
+			'#weight' => 51
+		);
+	}
+
+	return $form;
+}
+
+function transaction_insert_detail_form_submit($form_id, &$form_state) {
+	if ($form_state['values']['transaction_ref'] != "") {
+		global $user;
+
+		/**
+		 * Clean data
+		 */
+		$form_state['values']['cost'] = intval(str_replace(",", "", $form_state['values']['cost']));
+
+		$detail = new stdClass();
+		$detail->type = "transaction_detail";
+		$detail->uid = $user->uid;
+
+		$detail->field_transaction_ref['0']['nid'] = $form_state['values']['transaction_ref'];
+		$detail->field_gold_type_ref['0']['nid'] = $form_state['values']['product_ref'];
+		$detail->field_transaction_value['0']['value'] = $form_state['values']['amount'];
+		$detail->field_transaction_sub_detail['0']['value'] = $form_state['values']['detail'];
+		$detail->field_transaction_cost['0']['value'] = $form_state['values']['cost'];
+		$detail->field_transaction_weight['0']['value'] = $form_state['values']['gold_weight'];
+
+		node_save($detail);
+
+		$form_state['redirect'] = "node/".$form_state['values']['transaction_ref'];
+	}
+	/*edit mode*/
+	elseif ($form_state['values']['edit_mode'] == 1) {
+
+		$product_id = $form_state['values']['product_id_old'];
+		$index = $form_state['values']['session_index_old'];
+
+		$select_product_id = $form_state['values']['product_ref'];
+
+		/**
+		 * Clean data
+		 */
+		$form_state['values']['cost'] = intval(str_replace(",", "", $form_state['values']['cost']));
+
+		/*Check for user change new type*/
+		if ($select_product_id != $product_id) {
+			unset($_SESSION['gold_list'][$product_id][$index]);
+
+			$index = count($gold_list[$select_product_id]) + 1;
+			$product_id = $select_product_id;
+
+		}
+
+		$_SESSION['gold_list'][$product_id][$index] = array(
+			"#amount" => $form_state['values']['amount'],
+			"#cost"   => $form_state['values']['cost'],
+			"#weight" => $form_state['values']['gold_weight'],
+			"#unit" => $form_state['values']['gold_weight_unit'],
+			"#detail" => $form_state['values']['detail'],
+		);
+
+		session_write_close();
+
+		$redirect = array(
+			'path' => "node/".$form_state['values']['current_profile_nid']."/add-transaction",
+			'query' => NULL,
+			'fragment' => 'list'
+		);
+
+		$form_state['redirect'] = $redirect;
+	}
+	/*for temporary save list*/
+	else {
+		/**
+		 * Clean data
+		 */
+		$form_state['values']['cost'] = intval(str_replace(",", "", $form_state['values']['cost']));
+
+		$gold_list = array();
+
+		if (!isset($_SESSION['gold_list'])) {
+			session_register('gold_list');
+		}
+		else {
+			$gold_list = $_SESSION['gold_list'];
+		}
+
+		if (isset($gold_list[$form_state['values']['product_ref']])) {
+			$index = count($gold_list[$form_state['values']['product_ref']]);
+		}
+		else {
+			$index = 0;
+			$gold_list[$form_state['values']['product_ref']] = array();
+		}
+
+		$gold_list[$form_state['values']['product_ref']][$index] = array(
+			"#amount" => $form_state['values']['amount'],
+			"#cost"   => $form_state['values']['cost'],
+			"#weight" => $form_state['values']['gold_weight'],
+			"#unit" => $form_state['values']['gold_weight_unit'],
+			"#detail" => $form_state['values']['detail'],
+		);
+
+		$_SESSION['gold_list'] = $gold_list;
+
+		session_write_close();
+
+		$redirect = array(
+			'path' => "node/".$form_state['values']['current_profile_nid']."/add-transaction",
+			'query' => NULL,
+			'fragment' => 'list'
+		);
+
+		$form_state['redirect'] = $redirect;
+	}
+}
+
+function transaction_clear_session_detail($return_nid) {
+	session_unregister('gold_list');
+	drupal_goto("node/".$return_nid."/add-transaction", NULL, 'list');
+}
+
+function transaction_delete_session_detail($product_nid, $index, $return_nid) {
+	$output = '';
+
+	if (isset($_SESSION['gold_list'])) {
+		unset($_SESSION['gold_list'][$product_nid][$index]);
+	}
+
+	foreach ($_SESSION['gold_list'] as $product => $index) {
+		$count_check = 0;
+		foreach ($index as $value) {
+			$count_check++;
+		}
+
+		if (!$count_check) {
+			unset($_SESSION['gold_list'][$product]);
+		}
+	}
+
+	if (count($_SESSION['gold_list']) == 0) {
+		session_unregister('gold_list');
+	}
+
+	drupal_goto("node/".$return_nid."/add-transaction", NULL, 'list');
+
+	return $output;
+}
+
+
+function transaction_add(&$node) {
+	drupal_add_css(drupal_get_path('theme', 'ninesixtyrobots').'/css/hide-sidebar.css');
+
+	drupal_add_js(drupal_get_path("module", 'custom_js')."/jquery.number_format.js");
+	drupal_add_js(drupal_get_path("module", 'custom_js')."/insert-detail-currency.js");
+
+	$output = '';
+
+	$output .= '<div id="ticket-temp" class="container_16">';
+
+	/*Detail Column*/
+	$output .= '<div class="grid_10">';
+	$output .= '<div id="list"></div>';
+	$output .= transaction_get_tempory_list();
+
+	if (isset($_SESSION['gold_list'])) {
+		$output .= drupal_get_form(transaction_add_form, $node);
+	}
+
+	$output .=	'</div>';
+
+	/*Form Column*/
+	/*check edit mode*/
+	$pid = arg(3);
+	$index = arg(4);
+	if ($pid != "" && $index != "") {
+		$edit['product_id'] = $pid;
+		$edit['index'] = $index;
+		$edit_msg = '<div class="edit-msg">'.t("แก้ไขข้อมูลรายละเอียด").'</div>';
+	}
+	else {
+		$edit = NULL;
+		$edit_msg = "";
+	}
+
+	$output .= '<div class="grid_6">
+					<div id="edit"></div>
+					'.drupal_get_form(transaction_insert_detail_form, NULL, NULL, $edit).'
+				</div>';
+
+	$output .= '</div>';
+
+	$output .= '<div class="clear-block"></div>';
+
+	// $output .= drupal_get_form(transaction_add_form, $node);
+	return $output;
+}
+
+function transaction_get_tempory_list() {
+	$node_nid = arg(1);
+
+	/*edit mode*/
+	$pid = arg(3);
+	$index = arg(4);
+
+	$output = '';
+
+	$total = array();
+	$total['#amount'] = 0;
+	$total['#cost'] = 0;
+
+	if (isset($_SESSION['gold_list'])) {
+		$output .= '<table class="temp-table">';
+		$output .= '<thead>
+						<th>'.t("ประเภท").'</th>
+						<th>'.t("จำนวน").'</th>
+						<th>'.t("น้ำหนัก").'</th>
+						<th>'.t("หน่วย").'</th>
+						<th>'.t("จำนวนเงิน").'</th>
+						<th>'.t("รายละเอียด").'</th>
+						<th>'.t("Op.").'</th>
+					</thead>';
+
+		$row_num = 0;
+		foreach ($_SESSION['gold_list'] as $type => $key) {
+			foreach ($key as $int => $detail) {
+
+				/*check edit mode*/
+				if ($int == $index && $type == $pid) {
+					$edit_class = 'row-edit';
+				} else {
+					$edit_class = '';
+				}
+
+				$link_edit = l("แก้ไข", "node/".$node_nid."/add-transaction/".$type."/".$int, array('fragment'=>'edit'));
+				$link_del = l("ลบ", "transaction/session/dellete-detail/".$type."/".$int."/".$node_nid);
+
+				$class = ($row_num % 2 == 0) ? "odd" : "even" ;
+				$type_str = db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $type));
+
+				$output .= '<tr class="'.$class.' '.$edit_class.'">';
+				$output .= '<td class="type">'.$type_str.'</td>';
+				$output .= '<td class="amount">'.$detail['#amount'].'</td>';
+				$output .= '<td class="weight">'.$detail['#weight'].'</td>';
+				$output .= '<td class="unit">'.$detail['#unit'].'</td>';
+				$output .= '<td class="cost">'.number_format($detail['#cost']).'</td>';
+				$output .= '<td>'.$detail['#detail'].'</td>';
+				$output .= '<td class="op">'.$link_edit." : ".$link_del.'</td>';
+				$output .= '</tr>';
+
+				$total['#amount'] += $detail['#amount'];
+				$total['#cost'] += $detail['#cost'];
+
+				$row_num++;
+			}
+		}
+		//end foreach
+
+		$output .= '<tr>
+						<td class="total">'.t("รวม").'</td>
+						<td class="amount total">'.$total['#amount'].'</td>
+						<td colspan=2></td>
+						<td class="cost total">'.number_format($total['#cost']).'</td>
+						<td colspan=2></td>
+					</tr>';
+
+		$output .= '</table>';
+
+		$output .= '<div class="help">
+						<div>'.t('ข้อมูลในส่วนนี้จะยังไม่ทำการบันทึกจนกว่าท่านจะกด #label', array('#label'=>'สร้างตั๋วจำนำทอง')).'</div>
+					</div>';
+	}
+	else {
+		$output .= '<div class="empty-result">'.t("ยังไม่มีการทำรายการใดๆ").'</div>';
+	}
+
+	// session_unregister('gold_list');
+
+	return $output;
+}
+
+function transaction_add_date_thai($nid) {
+	$created = db_result(db_query("SELECT created FROM {node} WHERE nid=%d",$nid));
+	$msg  = thai_time_format($created, 'd-F-Y', 1);
+	return $msg;
+}
+
+function transaction_edit_rate_link($nid) {
+	$result = db_query("SELECT field_stake_parent_ref_nid FROM {content_type_stake_rate} WHERE nid=%d", $nid);
+	$parent_nid = db_result($result);
+
+	$result = db_query("SELECT field_stake_parent_status_value FROM {content_type_stake} WHERE nid=%d", $parent_nid);
+	$status = db_result($result);
+
+	if ($status == 1) {
+		return l("แก้ไข", "node/".$nid."/edit");
+	}
+}
+
+function transaction_get_transaction_code_form_detail($detail_nid) {
+	$trans_nid = db_result(db_query("SELECT field_transaction_ref_nid
+									 FROM {content_type_transaction_detail}
+									 WHERE nid=%d", $detail_nid));
+
+	$code = db_result(db_query("SELECT field_transaction_code_value
+								FROM {content_type_transaction_gold}
+								WHERE nid=%d", $trans_nid));
+
+	return l($code, "node/".$trans_nid);
+}
+
+function transaction_get_transaction_owner_form_detail($detail_nid) {
+	$trans_nid = db_result(db_query("SELECT field_transaction_ref_nid
+									 FROM {content_type_transaction_detail}
+									 WHERE nid=%d", $detail_nid));
+
+	$cnid = db_result(db_query("SELECT field_customer_ref_nid
+								FROM {content_type_transaction_gold}
+								WHERE nid=%d", $trans_nid));
+
+	$customer = db_fetch_object(db_query("SELECT title, nid FROM {node} WHERE nid=%d", $cnid));
+
+	return l($customer->title, "node/".$customer->nid);
+}
+
+function transaction_add_form(&$form_state, &$node) {
+	$form = array();
+	$form['customer_nid'] = array(
+		'#type' => 'value',
+		'#value' => $node->nid
+	);
+
+	$form['ticket_type'] = array(
+		'#type' => 'radios',
+		'#title' => 'ระยะเวลาต่ออายุตั๋ว',
+		'#options' => array(0 => '4 เดือน', 1 => '1 เดือน'),
+		'#default_value' => 1
+	);
+
+	$form['money_string'] = array(
+		'#type' => 'textfield',
+		'#title' => '<br><br>ระบุจำนวนเงินเป็นตัวอักษร',
+		'#required' => true,
+	);
+
+	$form['blank'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="clear-block"></div><br />',
+	);
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("สร้างตั๋วจำนำทอง"),
+		'#weight' => 50
+	);
+
+	$clear = url("transaction/session/clear-detail/".$node->nid);
+
+	$form['cancel'] = array(
+		'#type' => 'markup',
+		'#value' => '<input type="button" value="'.t('ลบรายการทั้งหมด').'" onclick="window.location.replace(\''.$clear.'\')">',
+		'#weight' => 51
+	);
+
+	return $form;
+}
+
+function transaction_add_form_submit($form_id, &$form_state) {
+	global $user;
+
+	/**
+	 * Create new Traction
+	 **/
+
+	/*get new code*/
+	$result = db_query("SELECT nid, field_transaction_no_value, field_transaction_int_value
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_no_value IS NOT NULL
+						ORDER BY nid DESC LIMIT 1");
+
+	$lastest_transac = db_fetch_object($result);
+
+	if ($lastest_transac->field_transaction_no_value == "") {
+		$lastest_transac->field_transaction_no_value = 0;
+		$lastest_transac->field_transaction_int_value = 1;
+	}
+
+	if ($lastest_transac->field_transaction_no_value < 999) {
+		$lastest_transac->field_transaction_no_value += 1;
+	}
+	else {
+		$lastest_transac->field_transaction_int_value += 1;
+		$lastest_transac->field_transaction_no_value = 1;
+	}
+
+	$money_str = $form_state['values']['money_string'];
+
+	$char = transaction_get_char_cat();
+
+	if ($lastest_transac->field_transaction_no_value < 10) {
+		$prefix = "000";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 100) {
+		$prefix = "00";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 1000) {
+		$prefix = "0";
+	}
+
+	$cat_char = $char[$lastest_transac->field_transaction_int_value];
+	$code = $prefix.$lastest_transac->field_transaction_no_value;
+
+	/*create new transaction node*/
+	$node = new stdClass();
+	$node->type = "transaction_gold";
+	$node->uid = $user->uid;
+
+	/*get owner name form term*/
+	$title = db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $form_state['values']['customer_nid']));
+	$owner_tid = db_result(db_query("SELECT tid FROM {term_data} WHERE vid=%d AND name='%s'", 4, $title));
+
+	$node->field_transaction_code[0]['value'] = $cat_char."".$code;
+	$node->field_transaction_no[0]['value'] = $lastest_transac->field_transaction_no_value;
+	$node->field_transaction_int[0]['value'] = $lastest_transac->field_transaction_int_value;
+	$node->field_transaction_char[0]['value'] = $cat_char;
+	$node->field_customer_ref[0]['nid'] = $form_state['values']['customer_nid'];
+	$node->field_transaction_status[0]['value'] = 5;
+	$node->field_transaction_owner_term[0]['value'] = $owner_tid;
+	$node->field_transaction_ticket_status[0]['value'] = 0;
+	$node->field_transaction_created_date[0]['value'] = time();
+	$node->field_transaction_money_str[0]['value'] = $money_str;
+
+	$node->field_transaction_interval_type[0]['value'] = $form_state['values']['ticket_type'];
+
+	/*set employee name for term*/
+	$employee_name = db_result(db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile'));
+	$employee_tid = custom_term_set_new($employee_name, 6);
+	$node->field_employee_term[0]['value'] = $employee_tid;
+
+	node_save($node);
+
+	$new_transaction_nid = db_result(db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid DESC LIMIT 1", 'transaction_gold'));
+
+	/**
+	 * Add Transaction Detail
+	 **/
+	foreach ($_SESSION['gold_list'] as $type => $key) {
+		foreach ($key as $index => $session) {
+			$detail = new stdClass();
+			$detail->type = "transaction_detail";
+			$detail->uid = $user->uid;
+
+			$detail->field_transaction_ref['0']['nid'] = $new_transaction_nid;
+			$detail->field_gold_type_ref['0']['nid'] = $type;
+			$detail->field_transaction_value['0']['value'] = $session['#amount'];
+			$detail->field_transaction_sub_detail['0']['value'] = $session['#detail'];;
+			$detail->field_transaction_cost['0']['value'] = $session['#cost'];;
+			$detail->field_transaction_weight['0']['value'] = $session['#weight'];
+			$detail->field_transaction_unit['0']['value'] = $session['#unit'];
+
+
+			node_save($detail);
+
+			unset($detail);
+		}
+	}
+
+	session_unregister("gold_list");
+
+	$form_state['redirect'] = "node/".$new_transaction_nid;
+}
+
+function transaction_view_interval_type($nid) {
+	$node = node_load($nid);
+	$interval = $node->field_transaction_interval_type['0']['value'];
+
+	if ($interval == 0) {
+		$msg = "4 เดือน";
+	}
+	else {
+		$msg = "1 เดือน";
+	}
+
+	return $msg;
+}
+
+function trasaction_detail_page_breadcrumb(&$node) {
+	$ref = $node->field_transaction_ref[0]['nid'];
+	$breadcrumb[] = l("Home", NULL);
+	$breadcrumb[] = l("ตั๋วจำนำ", "node/".$ref);
+	drupal_set_breadcrumb($breadcrumb);
+}
+
+function transaction_get_status(&$transaction) {
+	if ($transaction->field_transaction_status[0]['value'] == WITHDRAW ||
+		$transaction->field_transaction_status[0]['value'] == OUTTIME ||
+		$transaction->field_transaction_status[0]['value'] == CANCEL)  {
+		return FALSE;
+	}
+	else {
+		return TRUE;
+	}
+}
+
+function transaction_renew(&$transac) {
+	$output = '';
+
+	$year = transaction_get_ticket_year($transac);
+
+	drupal_set_title(t("ต่อตั๋วจำนำทองหมายเลข #code-#year", array('#code' => $transac->field_transaction_code[0]['value'], '#year'=>$year)));
+
+	$output .= trasaction_stake_calculate($transac, "renew");
+	return $output;
+}
+
+function transaction_reduce(&$transac) {
+	$year = transaction_get_ticket_year($transac);
+	drupal_set_title(t("ลดยอดเงินต้นในตั๋วจำนำหมายเลข #code-#year", array('#code' => $transac->field_transaction_code[0]['value'], '#year'=>$year)));
+
+	$output = '';
+	$output .= trasaction_stake_calculate($transac, "reduce");
+
+	return $output;
+}
+
+function transaction_add_cost(&$transac) {
+	$year = transaction_get_ticket_year($transac);
+	drupal_set_title(t("เพ่ิมยอดเงินต้นในตั๋วจำนำหมายเลข #code-#year", array('#code' => $transac->field_transaction_code[0]['value'], '#year'=>$year)));
+
+	$output = '';
+	$output .= trasaction_stake_calculate($transac, "add_cost");
+
+	return $output;
+}
+
+function transaction_withdraw(&$transac) {
+	$year = transaction_get_ticket_year($transac);
+	drupal_set_title(t("ไถ่ถอนของบางส่วนในตั๋วจำนำหมายเลข #code-#year", array('#code' => $transac->field_transaction_code[0]['value'], '#year'=>$year)));
+
+	$output = '';
+	$output .= trasaction_stake_calculate($transac, "withdraw");
+	return $output;
+}
+
+function transaction_close(&$transac) {
+	$year = transaction_get_ticket_year($transac);
+	drupal_set_title(t("ไถ่ถอนตั๋วจำนำหมายเลข #code-#year", array('#code' => $transac->field_transaction_code[0]['value'], '#year'=>$year)));
+
+	$output = '';
+	$output .= trasaction_stake_calculate($transac, "close");
+	return $output;
+}
+
+/**
+ * function
+ */
+function transaction_get_ticket_year(&$transac){
+	$create = $transac->created;
+	$year = format_date($create, 'custom', 'Y');
+	$thai_year = thai_time_get_year_acronnym($year);
+
+	return $thai_year;
+}
+
+function transaction_reduce_form(&$form_state, $transac_nid, $stake, $real_end_date) {
+	global $user;
+	$end_date = time();
+	$next_date = transaction_calulate_interval_thai($end_date);
+
+	/*check ticket type*/
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid);
+	$ticket_type = db_result($result);
+
+	if ($ticket_type == 0) {
+		$day   = format_date($next_date, 'custom', 'd');
+		$month = format_date($next_date, 'custom', 'm');
+		$year  = format_date($next_date, 'custom', 'Y');
+
+		$next_date = mktime(0, 0, 0, $month+3, $day, $year);
+	}
+
+	/**
+	 * Get reduce stake
+	 */
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid));
+
+	$reduce_stake = transaction_calculate_reduce_stake($transac_nid, $stake, $real_end_date, $total_cost);
+	$reduce_stake = round($reduce_stake);
+
+	$form = array();
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	$form['stake'] = array(
+		'#type' => 'textfield',
+		'#value' => $reduce_stake
+	);
+
+	$form['stake_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($reduce_stake).'</div>'
+	);
+
+	$form['remain_money'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="remain-money">'.number_format($total_cost).'</div>'
+	);
+
+	$form['total_money'] = array(
+		'#type' => 'textfield',
+		'#value' => $total_cost
+	);
+
+	$form['money_str'] = array(
+		'#type' => 'textfield',
+		'#title' => 'ระบุจำนวนเงินเป็นตัวอักษร',
+		'#required' => true,
+	);
+
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $user->uid));
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+
+	$form['reducer'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.$name.'</div>'
+	);
+
+	$form['reduce_cost'] = array(
+		'#type' => 'textfield',
+		'#attributes' => array('autocomplete'=>'off'),
+	);
+	/*
+	$form['date_reduce'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format(time(), 'd-F-Y', 1).'</div>'
+	);
+	*/
+	$form['date_reduce_display'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($end_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_next'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($next_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_dreduce_stamp'] = array(
+		'#type' => 'value',
+		'#value' => $end_date
+	);
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+	while ($detail = db_fetch_object($result)) {
+		$form[$detail->nid] = array(
+			'#type' => 'textfield',
+		);
+	}
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("ลดยอด")
+	);
+	return $form;
+}
+
+function transaction_reduce_form_validate($form_id, &$form_state) {
+	$transaction_nid = $form_state['values']['transaction_old'];
+	$reduce_cost = $form_state['values']['reduce_cost'];
+
+	$reduce_cost = intval(str_replace(",", "", $reduce_cost));
+
+	if (!is_numeric($reduce_cost)) {
+		form_set_error('reduce_cost', t("จำนวนที่กรอกต้องเป็นตัวเลขเท่านั้น"));
+	}
+	else {
+		$transaction_nid = $form_state['values']['transaction_old'];
+		$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_nid));
+		if ($reduce_cost >= $total_cost) {
+			form_set_error('reduce_cost', t("จำนวนเงินที่ขอลดจะมากว่าจำนวนเงินต้นไม่ได้"));
+		}
+	}
+
+	/**
+	 * Check detail
+	 */
+	$total_reduce = 0;
+
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transaction_nid);
+	while ($detail = db_fetch_object($result)) {
+		$detail_reduce_cost = intval(str_replace(",", "", $form_state['values'][$detail->nid]));
+
+		/*Calculate real remain cost*/
+		$remain_cost = ( $detail->field_transaction_cost_value + intval($detail->field_detail_add_cost_value) ) - intval($detail->field_detail_reduce_cost_value);
+
+		if ($detail_reduce_cost >= $remain_cost) {
+			form_set_error($detail->nid, t("จำนวนเงินที่ขอลดจะมากว่าจำนวนเงินต้นไม่ได้"));
+		}
+
+		$total_reduce += $detail_reduce_cost;
+	}
+
+	if ($total_reduce == 0) {
+		form_set_error('reduce_cost', t("กรุณากรอกจำนวนเงินที่ต้องการลดยอด"));
+	}
+}
+
+function transaction_reduce_form_submit($form_id, &$form_state) {
+	global $user;
+
+	$transaction_old = $form_state['values']['transaction_old'];
+	$stake  = $form_state['values']['stake'];
+	$create_date = $form_state['values']['date_renew_stamp'];
+	$reduce_cost = $form_state['values']['reduce_cost'];
+	$money_str = $form_state['values']['money_str'];
+
+	$reduce_cost = intval(str_replace(",", "", $reduce_cost));
+
+	/**
+	 * Load Old Transaction
+	 */
+	$transaction_old_obj = node_load($transaction_old);
+
+	/**
+	 * Create new Traction
+	 **/
+
+	/*get new code*/
+	$result = db_query("SELECT nid, field_transaction_no_value, field_transaction_int_value
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_no_value IS NOT NULL
+						ORDER BY nid DESC LIMIT 1");
+
+	$lastest_transac = db_fetch_object($result);
+
+	if ($lastest_transac->field_transaction_no_value == "") {
+		$lastest_transac->field_transaction_no_value = 0;
+		$lastest_transac->field_transaction_int_value = 1;
+	}
+
+	if ($lastest_transac->field_transaction_no_value < 999) {
+		$lastest_transac->field_transaction_no_value += 1;
+	}
+	else {
+		$lastest_transac->field_transaction_int_value += 1;
+		$lastest_transac->field_transaction_no_value = 1;
+	}
+
+	$char = transaction_get_char_cat();
+
+	if ($lastest_transac->field_transaction_no_value < 10) {
+		$prefix = "000";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 100) {
+		$prefix = "00";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 1000) {
+		$prefix = "0";
+	}
+
+	$cat_char = $char[$lastest_transac->field_transaction_int_value];
+	$code = $prefix.$lastest_transac->field_transaction_no_value;
+
+	/*create new transaction node*/
+	$node = new stdClass();
+	$node = clone $transaction_old_obj;
+
+	/*get old total cost*/
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_old_obj->nid));
+	unset($transaction_old_obj);
+
+	$node->created = $create_date;
+	$node->changed = $create_date;
+
+	unset($node->nid);
+	unset($node->field_detail_withdraw_ref);
+
+	$node->uid = $user->uid;
+
+	$node->field_transaction_code[0]['value'] 	= $cat_char."".$code;
+	$node->field_transaction_no[0]['value'] 	= $lastest_transac->field_transaction_no_value;
+	$node->field_transaction_int[0]['value'] 	= $lastest_transac->field_transaction_int_value;
+	$node->field_transaction_char[0]['value'] 	= $cat_char;
+	$node->field_transaction_old_ref[0]['nid'] 	= $transaction_old;
+	$node->field_transaction_total_cost[0]['value'] = $total_cost - $reduce_cost;
+
+	$node->field_transaction_created_date[0]['value'] 	= time();
+
+	/*get new stake rate*/
+	$node->field_transaction_stake_rate[0]['value'] = transaction_get_stake_rate($node->field_transaction_total_cost[0]['value']);
+	$new_stake_rate = $node->field_transaction_stake_rate[0]['value'];
+
+	/*set employee name for term*/
+	$employee_name = db_result(db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile'));
+	$employee_tid = custom_term_set_new($employee_name, 6);
+	$node->field_employee_term[0]['value'] = $employee_tid;
+
+	$node->field_transaction_money_str[0]['value'] = $money_str;
+
+	node_save($node);
+
+	$new_transaction_nid = db_result(db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid DESC LIMIT 1", 'transaction_gold'));
+
+	/**
+	 * Add Transaction Detail
+	 **/
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $transaction_old);
+	while ($detail_nid = db_result($result)) {
+		$node_new_obj = new stdClass();
+
+		$detail_old_obj = node_load($detail_nid);
+		$node_new_obj = clone $detail_old_obj;
+
+		unset($node_new_obj->nid);
+		unset($node_new_obj->field_detail_add_cost[0]['value']);
+
+		$node_new_obj->field_transaction_ref[0]['nid'] = $new_transaction_nid;
+
+		/*detail reduce cost*/
+		$detail_reduce_cost = intval(str_replace(",", "", $form_state['values'][$detail_nid]));
+
+		$old_reduce_cost = intval($detail_old_obj->field_detail_reduce_cost[0]['value']);
+		$old_add_cost = intval($detail_old_obj->field_detail_add_cost[0]['value']);
+
+		$node_new_obj->field_transaction_cost[0]['value'] = ($node_new_obj->field_transaction_cost[0]['value'] + $old_add_cost) - $old_reduce_cost;
+
+		$node_new_obj->field_detail_reduce_cost[0]['value'] = $detail_reduce_cost;
+
+		node_save($node_new_obj);
+
+		unset($node_new_obj);
+	}
+
+	/*debug set new stake rate*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_stake_rate_value=%f WHERE nid=%d", $new_stake_rate, $new_transaction_nid);
+
+	/*set reduce date*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transac_reduce_date_value='%s' WHERE nid=%d", time(), $transaction_old);
+
+
+	/**
+	 * Update data in old transaction
+	 */
+	db_query("UPDATE {content_type_transaction_gold}
+		 	  SET  field_transaction_stake_pay_value=%f,
+				   field_transaction_status_value=%d,
+				   field_transaction_reduce_pay_value=%d,
+				   field_transaction_operation_date_value='%s'
+		      WHERE nid=%d", $stake, 23, $reduce_cost, time(), $transaction_old);
+
+	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $transaction_old, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 23, $transaction_old, $old_term);
+
+	$form_state['redirect'] = "node/".$new_transaction_nid;
+}
+
+function theme_transaction_reduce_form($form) {
+	/**
+	 * Render detail in ticket
+	 */
+	$items = array();
+
+	$result = db_query("SELECT n.title as type_name,
+							   d.nid,
+							   d.field_transaction_weight_value as weight,
+							   d.field_transaction_unit_value as unit,
+							   d.field_transaction_cost_value as cost,
+							   d.field_transaction_sub_detail_value as detail,
+							   d.field_detail_reduce_cost_value as reduce,
+							   d.field_transaction_value_value as value,
+							   d.field_detail_add_cost_value as add_cost
+					    FROM {content_type_transaction_detail} d
+						INNER JOIN {node} n ON n.nid=d.field_gold_type_ref_nid
+					    WHERE d.field_transaction_ref_nid=%d
+					    ORDER BY d.nid ASC", $form['transaction_old']['#value']);
+
+	while ($detail = db_fetch_object($result)) {
+		$remain = ($detail->cost + intval($detail->add_cost)) - intval($detail->reduce);
+		$items[] = array(
+			array('class'=>'type', 'data'=>$detail->type_name),
+			array('class'=>'weight', 'data'=>$detail->weight),
+			array('class'=>'unit', 'data'=>$detail->unit),
+			array('class'=>'value', 'data'=>$detail->value),
+			array('class'=>'detail-cost', 'data'=>number_format($remain)),
+			array('class'=>'pay-reduce-cost', 'data'=>drupal_render($form[$detail->nid])),
+		);
+	}
+
+	$item_head = array(
+		t("ประเภท"),
+		t("น้ำหนัก"),
+		t("หน่วยวัด"),
+		t("จำนวน"),
+		t("ราคาจำนำ"),
+		t("จำนวนเงินที่ลดยอด"),
+	);
+
+	$output .= '<div class="detail-reduce">
+					'.theme('table', $item_head, $items).'
+				</div>';
+
+	$rows[] = array(
+		array('class'=>'stake', 'data'=>drupal_render($form['stake_show'])),
+		array('class'=>'cost', 'data'=>'0'),
+		array('class'=>'pay-cost', 'data'=>'0'),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_display'])),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_next'])),
+		array('class'=>'employee', 'data'=>drupal_render($form['reducer'])),
+		array('class'=>'submit', 'data'=>drupal_render($form['submit'])),
+	);
+
+	$header = array(
+		"ดอกเบี้ย",
+		"จำนวนเงินที่ต้องการลดยอด",
+		"ลูกค้าต้องจ่าย",
+		"วันที่ออกตั๋วใหม่",
+		"วันที่ตั๋วครบกำหนด",
+		"ผู้รับต่อตั๋ว",
+		"ดำเนินการ"
+	);
+
+	$header2 = array(
+		"เงินที่เหลือ",
+		"จำนวนเงินที่เหลือเป็นตัวอักษร",
+	);
+
+	/*table for money string*/
+	$rows2[] = array(
+		array('class'=>'stake', 'data'=>drupal_render($form['remain_money'])),
+		array('class'=>'stake', 'data'=>drupal_render($form['money_str'])),
+	);
+
+	$output .= '<div class="reduce-wrapper">';
+	$output .= '
+		<div class="reduce-form">
+			'.theme('table', $header2, $rows2).'
+		</div>
+		<div class="reduce-form">
+			'.theme('table', $header, $rows).'
+		</div>';
+	$output .= '</div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+function transaction_close_form(&$form_state, $transac_nid, $stake, $real_end_date) {
+	global $user;
+	$end_date = time();
+	$next_date = transaction_calulate_interval_thai($end_date);
+
+	/**
+	 * Get reduce stake
+	 */
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid));
+
+	$reduce_stake = transaction_calculate_reduce_stake($transac_nid, $stake, $real_end_date, $total_cost);
+	$reduce_stake = round($reduce_stake);
+
+	$form = array();
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	$form['stake'] = array(
+		'#type' => 'textfield',
+		'#value' => $reduce_stake
+	);
+
+	$form['stake_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($reduce_stake).'</div>'
+	);
+
+	$form['total_cost'] = array(
+		'#type' => 'value',
+		'#value' => $total_cost
+	);
+
+	$form['total_cost_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($total_cost).'</div>'
+	);
+
+	$form['pay_cost'] = array(
+		'#type' => 'value',
+		'#value' => $total_cost + $reduce_stake
+	);
+
+	$form['pay_cost_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($total_cost + $reduce_stake).'</div>'
+	);
+
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $user->uid));
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+
+	$form['reducer'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.$name.'</div>'
+	);
+
+	$form['date_reduce'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format(time(), 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_stamp'] = array(
+		'#type' => 'value',
+		'#value' => $end_date
+	);
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("ไถ่ถอน")
+	);
+	return $form;
+}
+
+function transaction_close_form_submit($form_id, &$form_state) {
+	global $user;
+
+	$stake_cost = $form_state['values']['stake'];
+	$total_cost = $form_state['values']['total_cost'];
+	$transaction_nid = $form_state['values']['transaction_old'];
+
+	$current = time();
+
+	db_query("UPDATE {content_type_transaction_gold}
+			  SET field_transaction_withdraw_date_value='%s',
+			      field_transaction_operation_date_value='%s',
+			  	  field_transaction_close_pay_value=%f,
+				  field_transaction_stake_pay_value=%f,
+				  field_transaction_status_value=%d,
+				  field_withdraw_by_uid=%d,
+				  field_transaction_created_date_value=%d
+			  WHERE nid=%d", $current, $current, $total_cost, $stake_cost, 4, $user->uid, $current, $transaction_nid);
+
+  	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $transaction_nid, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 4, $transaction_nid, $old_term);
+
+	$form_state['redirect'] = "node/".$transaction_nid;
+}
+
+function theme_transaction_close_form($form) {
+	$rows[] = array(
+		array('class'=>'stake', 'data'=>drupal_render($form['stake_show'])),
+		array('class'=>'cost', 'data'=>drupal_render($form['total_cost_show'])),
+		array('class'=>'cost', 'data'=>drupal_render($form['pay_cost_show'])),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce'])),
+		array('class'=>'employee', 'data'=>drupal_render($form['reducer'])),
+		array('class'=>'submit', 'data'=>drupal_render($form['submit'])),
+	);
+
+	$header = array(
+		"เงินดอกเบี้ย<br />(บาท)",
+		"เงินต้น<br />(บาท)",
+		"รวมยอดที่ต้องชำระทั้งหมด<br />(บาท)",
+		"วันที่ไถ่ถอน",
+		"ผู้รับไถ่ถอน",
+		"ดำเนินการ"
+	);
+
+	$output .= '<div class="reduce-wrapper">';
+	$output .= '<div class="reduce-form">
+					'.theme('table', $header, $rows).'
+				</div>';
+	$output .= '</div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+function transaction_withdraw_form(&$form_state, $transac_nid, $stake, $real_end_date) {
+	global $user;
+	$end_date = time();
+	$next_date = transaction_calulate_interval_thai($end_date);
+
+	/*check ticket type*/
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid);
+	$ticket_type = db_result($result);
+
+	if ($ticket_type == 0) {
+		$day   = format_date($next_date, 'custom', 'd');
+		$month = format_date($next_date, 'custom', 'm');
+		$year  = format_date($next_date, 'custom', 'Y');
+
+		$next_date = mktime(0, 0, 0, $month+3, $day, $year);
+	}
+
+	/**
+	 * Get reduce stake
+	 */
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid));
+
+	$reduce_stake = transaction_calculate_reduce_stake($transac_nid, $stake, $real_end_date, $total_cost);
+	$reduce_stake = round($reduce_stake);
+
+	$form = array();
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	$form['stake'] = array(
+		'#type' => 'textfield',
+		'#value' => $reduce_stake
+	);
+
+	$form['money_str'] = array(
+		'#type' => 'textfield',
+	);
+
+	$form['money_str_html'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="money-str-html"></div>'
+	);
+
+	$form['money_total'] = array(
+		'#type' => 'textfield',
+		'#value' => $total_cost
+	);
+
+	$form['stake_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($reduce_stake).'</div>'
+	);
+
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $user->uid));
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+
+	$form['reducer'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.$name.'</div>'
+	);
+
+	$form['reduce_cost'] = array(
+		'#type' => 'textfield',
+		'#attributes' => array('autocomplete'=>'off'),
+	);
+
+	$form['date_reduce'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format(time(), 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_display'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($end_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_next'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($next_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_stamp'] = array(
+		'#type' => 'value',
+		'#value' => $end_date
+	);
+
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+	while ($detail = db_fetch_object($result)) {
+		$form[$detail->nid] = array(
+			'#type' => 'checkboxes',
+			'#options' => array($detail->nid => "")
+		);
+
+		$cost = ($detail->field_transaction_cost_value + intval($detail->field_detail_add_cost_value)) - intval($detail->field_detail_reduce_cost_value);
+
+		$form[$detail->nid."-value"] = array(
+			'#type' => 'textfield',
+			'#value' => $cost
+		);
+
+		/*set amount option*/
+		$amount_options = array();
+		if ($detail->field_transaction_value_value > 1) {
+			for ($i=1; $i <= $detail->field_transaction_value_value; $i++) {
+				$amount_options[$i] = $i;
+			}
+		}else {
+			$amount_options[1] = 1;
+		}
+
+		$form[$detail->nid."-amount"] = array(
+			'#type' => 'select',
+			'#options' => $amount_options,
+			'#default_value' => array(count($amount_options)),
+		);
+
+		$form[$detail->nid."-weight"] = array(
+			'#type' => 'textfield',
+		);
+
+		$form[$detail->nid."-weight-default"] = array(
+			'#type' => 'textfield',
+			'#value' => $detail->field_transaction_weight_value
+		);
+
+		$form[$detail->nid."-new-cost"] = array(
+			'#type' => 'textfield',
+		);
+	}
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("ไถ่ถอน")
+	);
+	return $form;
+}
+
+function transaction_withdraw_form_validate($form_id, &$form_state) {
+	$reduce_cost = $form_state['values']['reduce_cost'];
+
+	$reduce_cost = intval(str_replace(",", "", $reduce_cost));
+
+	if (!is_numeric($reduce_cost)) {
+		form_set_error('reduce_cost', t("จำนวนที่กรอกต้องเป็นตัวเลขเท่านั้น"));
+	}
+
+	/*get upper bound*/
+	$result = db_query("SELECT COUNT(nid) FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $form_state['values']['transaction_old']);
+	$total_detail = db_result($result);
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $form_state['values']['transaction_old']);
+	while ($nid = db_result($result)) {
+		foreach ($form_state['values'][$nid] as $key => $value) {
+			if ($value != 0) {
+				$withdraw_node_ref[] = $value;
+			}
+		}
+	}
+
+	/**
+	 * Error condition
+	 */
+	if (count($withdraw_node_ref) == 0) {
+		form_set_error('reduce_cost', t("ยังไม่ได้เลือกรายการที่ต้องการไถ่ถอน"));
+	}
+	elseif (count($withdraw_node_ref) == $total_detail) {
+		foreach ($withdraw_node_ref as $key => $detail_nid) {
+			$result = db_query("SELECT field_transaction_value_value as amount,
+				                       field_transaction_cost_value as cost,
+				    				   field_transaction_weight_value as weight
+								FROM {content_type_transaction_detail}
+								WHERE nid=%d", $detail_nid);
+
+			$check = db_fetch_object($result);
+
+			$new_cost = intval(str_replace(",", "", $form_state['values'][$detail_nid.'-new-cost']));
+
+			if ($check->amount <= $form_state['values'][$detail_nid.'-amount']) {
+				form_set_error($detail_nid.'-amount', t("ไถ่ถอนได้เฉพาะบางรายการ จะเลือกรายการทั้งหมดไม่ได้"));
+			}
+			elseif ($form_state['values'][$detail_nid.'-weight'] >= $check->weight ||
+					$form_state['values'][$detail_nid.'-weight'] == "" ||
+					$form_state['values'][$detail_nid.'-weight'] == 0){
+				form_set_error($detail_nid.'-weight', t("น้ำหนักที่ตัดออกจะมีจำนวนมากกว่าหรือเท่ากับน้ำหนักทองที่มีอยู่ไม่ได้"));
+			}
+			elseif ($form_state['values'][$detail_nid.'-value'] <= $new_cost) {
+				form_set_error($detail_nid.'-new-cost', t("ระบุจำนวนเงินที่จ่ายเต็มจำนวนไม่ได้"));
+			}
+		}
+	}
+	else {
+		foreach ($withdraw_node_ref as $key => $detail_nid) {
+			if ($form_state['values'][$detail_nid]) {
+				$result = db_query("SELECT field_transaction_value_value as amount,
+					                       field_transaction_cost_value as cost,
+					    				   field_transaction_weight_value as weight
+									FROM {content_type_transaction_detail}
+									WHERE nid=%d", $detail_nid);
+
+				$check = db_fetch_object($result);
+
+				$new_cost = intval(str_replace(",", "", $form_state['values'][$detail_nid.'-new-cost']));
+
+				if ($form_state['values'][$detail_nid.'-amount'] < $check->amount) {
+					$new_weight = intval($form_state['values'][$detail_nid.'-weight']);
+					if ($new_weight > 0 && $new_weight < $check->weight){
+						if ($new_cost < $check->cost) {
+							$foo = TRUE;
+						}
+						else {
+							form_set_error($detail_nid.'-new-cost', t("จำนวนเงินจะต้องลดจำนวนลง"));
+						}
+					}
+					else {
+						form_set_error($detail_nid.'-weight', t("น้ำหนักจะยังเหลือเท่าเดิมไม่ได้"));
+					}
+				}
+
+				if ($form_state['values'][$detail_nid.'-value'] < $new_cost) {
+					form_set_error($detail_nid.'-new-cost', t("จำนวนเงินที่จ่ายจะมากกว่ายอดเดิมที่มีอยู่ไม่ได้"));
+				}
+
+				if ($check->amount == 1 && $reduce_cost < $check->cost) {
+ 					form_set_error($detail_nid.'-new-cost', t("จำเป็นที่จะต้องทำการปรับยอดเงินให้ถูกต้องก่อนที่จะทำการไถ่ถอนสินค้าเพียงบางส่วน"));
+				}
+
+			}
+			// endif
+		}
+		// end foreach
+	}
+	// end else
+}
+
+function transaction_withdraw_form_submit($form_id, &$form_state) {
+	global $user;
+
+	$transaction_old = $form_state['values']['transaction_old'];
+	$stake  = $form_state['values']['stake'];
+	$create_date = $form_state['values']['date_renew_stamp'];
+	$reduce_cost = $form_state['values']['reduce_cost'];
+	$money_str = $form_state['values']['money_str'];
+
+	$reduce_cost = intval(str_replace(",", "", $reduce_cost));
+
+	$withdraw_node_ref = array();
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $form_state['values']['transaction_old']);
+	while ($nid = db_result($result)) {
+		foreach ($form_state['values'][$nid] as $key => $value) {
+			if ($value != 0) {
+				$withdraw_node_ref[] = $value;
+			}
+		}
+	}
+	//end while
+
+	/**
+	 * Load Old Transaction
+	 */
+	$transaction_old_obj = node_load($transaction_old);
+
+	/**
+	 * Create new Traction
+	 **/
+
+	/*get new code*/
+	$result = db_query("SELECT nid, field_transaction_no_value, field_transaction_int_value
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_no_value IS NOT NULL
+						ORDER BY nid DESC LIMIT 1");
+
+	$lastest_transac = db_fetch_object($result);
+
+	if ($lastest_transac->field_transaction_no_value == "") {
+		$lastest_transac->field_transaction_no_value = 0;
+		$lastest_transac->field_transaction_int_value = 1;
+	}
+
+	if ($lastest_transac->field_transaction_no_value < 999) {
+		$lastest_transac->field_transaction_no_value += 1;
+	}
+	else {
+		$lastest_transac->field_transaction_int_value += 1;
+		$lastest_transac->field_transaction_no_value = 1;
+	}
+
+	$char = transaction_get_char_cat();
+
+	if ($lastest_transac->field_transaction_no_value < 10) {
+		$prefix = "000";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 100) {
+		$prefix = "00";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 1000) {
+		$prefix = "0";
+	}
+
+	$cat_char = $char[$lastest_transac->field_transaction_int_value];
+	$code = $prefix.$lastest_transac->field_transaction_no_value;
+
+	/*create new transaction node*/
+	$node = new stdClass();
+	$node = clone $transaction_old_obj;
+
+	/*debug mode*/
+	$result = db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_old_obj->nid);
+	$old_total_transaction_cost = db_result($result);
+
+	/*get old total cost*/
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_old_obj->nid));
+
+	$node->created = $create_date;
+	$node->changed = $create_date;
+
+	unset($node->nid);
+
+	$node->uid = $user->uid;
+
+	$node->field_transaction_code[0]['value'] 	= $cat_char."".$code;
+	$node->field_transaction_no[0]['value'] 	= $lastest_transac->field_transaction_no_value;
+	$node->field_transaction_int[0]['value'] 	= $lastest_transac->field_transaction_int_value;
+	$node->field_transaction_char[0]['value'] 	= $cat_char;
+	$node->field_transaction_old_ref[0]['nid'] 	= $transaction_old;
+	$node->field_transaction_total_cost[0]['value'] = $total_cost - $reduce_cost;
+
+	$node->field_transaction_created_date[0]['value'] 	= time();
+
+	/*get new stake rate*/
+	$node->field_transaction_stake_rate[0]['value'] = transaction_get_stake_rate($node->field_transaction_total_cost[0]['value']);
+	$new_stake_rate = $node->field_transaction_stake_rate[0]['value'];
+
+	/*set employee name for term*/
+	$employee_name = db_result(db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile'));
+	$employee_tid = custom_term_set_new($employee_name, 6);
+	$node->field_employee_term[0]['value'] = $employee_tid;
+
+	$node->field_transaction_money_str[0]['value'] = $money_str;
+
+	node_save($node);
+
+	$new_transaction_nid = db_result(db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid DESC LIMIT 1", 'transaction_gold'));
+
+	db_query("UPDATE {content_type_transaction_gold} SET field_transac_withdraw_pay_value=NULL WHERE nid=%d", $new_transaction_nid);
+
+	/**
+	 * Add Transaction Detail
+	 **/
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $transaction_old);
+	while ($detail_nid = db_result($result)) {
+		if (!in_array($detail_nid, $withdraw_node_ref)) {
+			$node_new_obj = new stdClass();
+			$detail_old_obj = node_load($detail_nid);
+			$node_new_obj = clone $detail_old_obj;
+
+			unset($node_new_obj->nid);
+
+			$node_new_obj->field_transaction_ref['0']['nid'] = $new_transaction_nid;
+
+			node_save($node_new_obj);
+
+			unset($node_new_obj);
+		}
+		else {
+
+			$withdraw_items[] = $detail_nid;
+
+			$result_sub = db_query("SELECT nid as nid,
+									   field_transaction_value_value as amount,
+				                       field_transaction_cost_value as cost,
+				   					   field_transaction_weight_value as weight
+								FROM {content_type_transaction_detail}
+								WHERE nid=%d", $detail_nid);
+
+			$check = db_fetch_object($result_sub);
+
+			$new_cost = intval(str_replace(",", "", $form_state['values'][$detail_nid.'-new-cost']));
+
+			if ($check->amount > $form_state['values'][$detail_nid.'-amount'] &&
+			    $check->cost > $new_cost) {
+					/*add detail to new transaction*/
+					$node_new_obj = new stdClass();
+					$detail_old_obj = node_load($detail_nid);
+					$node_new_obj = clone $detail_old_obj;
+
+					unset($node_new_obj->nid);
+
+					$node_new_obj->field_transaction_ref[0]['nid'] = $new_transaction_nid;
+
+					$node_new_obj->field_transaction_cost[0]['value'] = $check->cost - $new_cost;
+					$node_new_obj->field_transaction_value[0]['value'] = $check->amount - $form_state['values'][$detail_nid.'-amount'];
+					$node_new_obj->field_transaction_weight[0]['value'] = $check->weight - $form_state['values'][$detail_nid.'-weight'];
+
+					node_save($node_new_obj);
+					unset($node_new_obj);
+
+					db_query("UPDATE {content_type_transaction_detail}
+							  SET field_detail_withdraw_weight_value=%d,
+							      field_detail_withdraw_amount_value=%d,
+							      field_detail_withdraw_cost_value=%d
+							  WHERE nid=%d", $form_state['values'][$detail_nid.'-weight'], $form_state['values'][$detail_nid.'-amount'], $new_cost, $check->nid);
+			}
+		}
+		// end else
+	}
+
+	/*debug set new stake rate*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_stake_rate_value=%f WHERE nid=%d", $new_stake_rate, $new_transaction_nid);
+
+	/**
+	 * Update data in old transaction
+	 */
+	$transaction_old_obj->field_transaction_stake_pay[0]['value'] = $stake;
+
+	$transaction_old_obj->field_transac_withdraw_pay[0]['value'] = $reduce_cost;
+	$transaction_old_obj->field_transaction_operation_date[0]['value'] = time();
+
+	if (count($withdraw_items) != 0) {
+		$transaction_old_obj->field_transaction_withdraw_item[0]['value'] = implode(',',$withdraw_items);
+	}
+
+	$count=0;
+	foreach ($withdraw_node_ref as $key => $value) {
+		$transaction_old_obj->field_detail_withdraw_ref[$count]['nid'] = $value;
+		$count++;
+	}
+
+	node_save($transaction_old_obj);
+	unset($transaction_old_obj);
+
+	/*debug mode*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_status_value=%d WHERE nid=%d", 23, $transaction_old);
+
+	/*debug mode*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_total_cost_value=%d WHERE nid=%d", $old_total_transaction_cost, $transaction_old);
+
+	/*set withdraw date in old transaction*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transac_withdraw_item_date_value='%s' WHERE nid=%d", time(), $transaction_old);
+
+	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $transaction_old, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 23, $transaction_old, $old_term);
+
+	$form_state['redirect'] = "node/".$new_transaction_nid;
+
+}
+
+function theme_transaction_withdraw_form($form) {
+	/**
+	 * Render detail in ticket
+	 */
+	$items = array();
+
+	$result = db_query("SELECT n.title as type_name,
+							   d.nid,
+							   d.field_transaction_weight_value as weight,
+							   d.field_transaction_unit_value as unit,
+							   d.field_transaction_cost_value as cost,
+							   d.field_transaction_sub_detail_value as detail,
+							   d.field_detail_reduce_cost_value as reduce,
+							   d.field_detail_add_cost_value as add_cost,
+							   d.field_transaction_value_value as amount
+					    FROM {content_type_transaction_detail} d
+						INNER JOIN {node} n ON n.nid=d.field_gold_type_ref_nid
+					    WHERE d.field_transaction_ref_nid=%d
+					    ORDER BY d.nid ASC", $form['transaction_old']['#value']);
+
+	while ($detail = db_fetch_object($result)) {
+		$remain = ($detail->cost + intval($detail->add_cost)) - intval($detail->reduce);
+
+		$items[] = array(
+			array('class'=>'check', 'data'=>drupal_render($form[$detail->nid])),
+			array('class'=>'type', 'data'=>$detail->type_name),
+			array('class'=>'amount', 'data'=>$detail->amount),
+			array('class'=>'weight', 'data'=>$detail->weight),
+			array('class'=>'unit', 'data'=>$detail->unit),
+			array('class'=>'cost', 'data'=>number_format($remain)),
+			// array('class'=>'detail', 'data'=>$detail->detail),
+			array('class'=>'amount-reduce', 'data'=>drupal_render($form[$detail->nid."-amount"])),
+			array('class'=>'weight-reduce', 'data'=>drupal_render($form[$detail->nid."-weight"])),
+			array('class'=>'new-cost', 'data'=>drupal_render($form[$detail->nid."-new-cost"])),
+		);
+
+		$hiden_items[] = array(
+			drupal_render($form[$detail->nid."-value"]),
+			drupal_render($form[$detail->nid."-weight-default"]),
+		);
+	}
+
+	$item_head = array(
+		t("เลือก"),
+		t("ประเภท"),
+		t("จำนวน"),
+		t("น้ำหนัก"),
+		t("หน่วยวัด"),
+		t("ราคาจำนำ"),
+		// t("รายละเอียด"),
+		t("จำนวนไถ่ถอน"),
+		t("น้ำหนักตัดออก"),
+		t("จำนวนเงินที่จ่าย"),
+	);
+
+	$output .= '<div class="detail-withdraw">
+					'.theme('table', $item_head, $items).'
+				</div>';
+
+	$output .= '<div class="hidden-table">
+					'.theme('table', $head, $hiden_items).'
+				</div>';
+
+	$rows[] = array(
+		array('class'=>'stake', 'data'=>drupal_render($form['stake_show'])),
+		array('class'=>'cost-display', 'data'=>''),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce'])),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_display'])),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_next'])),
+		array('class'=>'employee', 'data'=>drupal_render($form['reducer'])),
+		array('class'=>'submit', 'data'=>drupal_render($form['submit'])),
+	);
+
+	$rows2[] = array(
+		array('class'=>'markup-total-money', 'data'=>drupal_render($form['money_str_html'])),
+		array('class'=>'remian-money-str', 'data'=>drupal_render($form['money_str'])),
+	);
+
+	$header = array(
+		"ดอกเบี้ย",
+		"จำนวนเงินที่จ่ายเพื่อไถ่ถอน",
+		"วันที่ชำระ",
+		"วันที่ออกตั๋วใหม่",
+		"วันที่ตั๋วครบกำหนด",
+		"ผู้รับต่อตั๋ว",
+		"ดำเนินการ"
+	);
+
+	$header2 = array(
+		"จำนวนเงินที่เหลือ",
+		"จำนวนเงินที่เหลือเป็นตัวอักษร",
+	);
+
+	$output .= '<div class="reduce-wrapper">';
+	$output .= '
+		<div class="reduce-form">
+			'.theme('table', $header2, $rows2).'
+		</div>
+		<div class="reduce-form">
+			'.theme('table', $header, $rows).'
+		</div>';
+	$output .= '</div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+function transaction_adjust_form(&$form_state, $transac_nid) {
+	$form = array();
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+
+	while ($detail = db_fetch_object($result)) {
+		$cost = ($detail->field_transaction_cost_value + intval($detail->field_detail_add_cost_value)) - intval($detail->field_detail_reduce_cost_value);
+
+		$form[$detail->nid."-cost"] = array(
+			'#type' => 'textfield',
+		);
+	}
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("แก้ไขจำนวนเงิน")
+	);
+	return $form;
+}
+
+function transaction_adjust_form_validate($form_id, &$form_state) {
+	$transac_nid = $form_state['values']['transaction_old'];
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+
+	$total_cost_new = 0;
+	$total_cost_old = 0;
+
+	while ($detail = db_fetch_object($result)) {
+
+		$total_cost_old += ($detail->field_transaction_cost_value + $detail->field_detail_add_cost_value) - $detail->field_detail_reduce_cost_value;
+
+		$new_cost = intval(str_replace(",", "", $form_state['values'][$detail->nid.'-cost']));
+
+		if ($new_cost == 0) {
+			form_set_error($detail->nid."-cost", "กรุณากำหนดราคาให้กับสินค้า");
+		}
+		else {
+			$total_cost_new += $new_cost;
+		}
+	}
+
+	if ($total_cost_new != $total_cost_old) {
+		form_set_error($detail->nid."-cost", "ยอดรวมของสินค้าที่กรอกไปใหม่ไม่ตรงกับยอดรวมที่มีอยู่เดิม");
+	}
+}
+
+function transaction_adjust_form_submit($form_id, &$form_state) {
+	$transac_nid = $form_state['values']['transaction_old'];
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+
+	while ($detail = db_fetch_object($result)) {
+		$new_cost = intval(str_replace(",", "", $form_state['values'][$detail->nid.'-cost']));
+		$x = ($new_cost + intval($detail->field_detail_reduce_cost_value)) - intval($detail->field_detail_add_cost_value);
+		db_query("UPDATE {content_type_transaction_detail} SET field_transaction_cost_value=%d WHERE nid=%d", abs($x), $detail->nid);
+	}
+	// end while
+}
+
+function theme_transaction_adjust_form($form) {
+	/**
+	 * Render detail in ticket
+	 */
+	$items = array();
+
+	$result = db_query("SELECT n.title as type_name,
+							   d.nid,
+							   d.field_transaction_weight_value as weight,
+							   d.field_transaction_unit_value as unit,
+							   d.field_transaction_cost_value as cost,
+							   d.field_transaction_sub_detail_value as detail,
+							   d.field_detail_reduce_cost_value as reduce,
+							   d.field_detail_add_cost_value as add_cost,
+							   d.field_transaction_value_value as amount
+					    FROM {content_type_transaction_detail} d
+						INNER JOIN {node} n ON n.nid=d.field_gold_type_ref_nid
+					    WHERE d.field_transaction_ref_nid=%d
+					    ORDER BY d.nid ASC", $form['transaction_old']['#value']);
+
+	while ($detail = db_fetch_object($result)) {
+		$remain = ($detail->cost + intval($detail->add_cost)) - intval($detail->reduce);
+
+		$items[] = array(
+			array('class'=>'type', 'data'=>$detail->type_name),
+			array('class'=>'amount', 'data'=>$detail->amount),
+			array('class'=>'weight', 'data'=>$detail->weight),
+			array('class'=>'unit', 'data'=>$detail->unit),
+			array('class'=>'cost', 'data'=>number_format($remain)),
+			array('class'=>'detail', 'data'=>$detail->detail),
+			array('class'=>'new-cost', 'data'=>drupal_render($form[$detail->nid."-cost"])),
+		);
+
+		$hiden_items[] = array(
+			drupal_render($form[$detail->nid."-value"]),
+			drupal_render($form[$detail->nid."-weight-default"]),
+		);
+	}
+
+	$item_head = array(
+		t("ประเภท"),
+		t("จำนวน"),
+		t("น้ำหนัก"),
+		t("หน่วยวัด"),
+		t("ราคาจำนำ"),
+		t("รายละเอียด"),
+		t("เงินที่ปรับยอด"),
+	);
+
+	$output .= '<div class="detail-withdraw-adjust">
+					'.theme('table', $item_head, $items).'
+				</div>';
+
+	$output .= '<div class="hidden-table">
+					'.theme('table', $head, $hiden_items).'
+				</div>';
+
+	$output .= '<center>'.drupal_render($form).'</center>';
+	return $output;
+}
+
+function transaction_add_cost_form(&$form_state, $transac_nid, $stake, $real_end_date) {
+	global $user;
+
+	$end_date = time();
+	$next_date = transaction_calulate_interval_thai($end_date);
+
+	/*check ticket type*/
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid);
+	$ticket_type = db_result($result);
+
+	if ($ticket_type == 0) {
+		$day   = format_date($next_date, 'custom', 'd');
+		$month = format_date($next_date, 'custom', 'm');
+		$year  = format_date($next_date, 'custom', 'Y');
+
+		$next_date = mktime(0, 0, 0, $month+3, $day, $year);
+	}
+
+	/**
+	 * Get reduce stake
+	 */
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid));
+
+	$reduce_stake = transaction_calculate_reduce_stake($transac_nid, $stake, $real_end_date, $total_cost);
+	$reduce_stake = round($reduce_stake);
+
+	$form = array();
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	$form['stake'] = array(
+		'#type' => 'textfield',
+		'#value' => $reduce_stake
+	);
+
+	$form['remain_money'] = array(
+		'#type' => 'textfield',
+		'#required' => 'true'
+	);
+
+	$form['total_money'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="total-money-int">'.number_format($total_cost).'</div>'
+	);
+
+	$form['total_money_int'] = array(
+		'#type' => 'textfield',
+		'#value' => $total_cost
+	);
+
+	$form['stake_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.number_format($reduce_stake).'</div>'
+	);
+
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $user->uid));
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+
+	$form['reducer'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.$name.'</div>'
+	);
+
+	$form['add_cost'] = array(
+		'#type' => 'textfield',
+		'#attributes' => array('autocomplete' => 'off'),
+		'#required' => TRUE
+	);
+/*
+	$form['date_reduce'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format(time(), 'd-F-Y', 1).'</div>'
+	);
+*/
+	$form['date_reduce_display'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($end_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_reduce_next'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.thai_time_format($next_date, 'd-F-Y', 1).'</div>'
+	);
+
+	$form['date_dreduce_stamp'] = array(
+		'#type' => 'value',
+		'#value' => $end_date
+	);
+
+	/**
+	 * Get all transaction detail
+	 */
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d ORDER BY nid ASC", $transac_nid);
+	while ($detail = db_fetch_object($result)) {
+		$form[$detail->nid] = array(
+			'#type' => 'textfield',
+		);
+	}
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("เพิ่มยอด")
+	);
+	return $form;
+}
+
+function transaction_add_cost_form_validate($form_id, &$form_state) {
+	$add_cost = $form_state['values']['add_cost'];
+
+	$add_cost = intval(str_replace(",", "", $add_cost));
+
+	if (!is_numeric($add_cost) && $add_cost != 0) {
+		form_set_error('add_cost', t("กรุณากรอกข้อมูลเป็นตัวเลขเท่านั้น"));
+	}
+}
+
+function transaction_add_cost_form_submit($form_id, &$form_state) {
+	global $user;
+
+	$transaction_old = $form_state['values']['transaction_old'];
+	$stake  = $form_state['values']['stake'];
+	$create_date = $form_state['values']['date_renew_stamp'];
+	$add_cost = $form_state['values']['add_cost'];
+	$money_str = $form_state['values']['remain_money'];
+
+	$add_cost = intval(str_replace(",", "", $add_cost));
+
+	/**
+	 * Load Old Transaction
+	 */
+	$transaction_old_obj = node_load($transaction_old);
+
+	/**
+	 * Create new Traction
+	 **/
+
+	/*get new code*/
+	$result = db_query("SELECT nid, field_transaction_no_value, field_transaction_int_value
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_no_value IS NOT NULL
+						ORDER BY nid DESC LIMIT 1");
+
+	$lastest_transac = db_fetch_object($result);
+
+	if ($lastest_transac->field_transaction_no_value == "") {
+		$lastest_transac->field_transaction_no_value = 0;
+		$lastest_transac->field_transaction_int_value = 1;
+	}
+
+	if ($lastest_transac->field_transaction_no_value < 999) {
+		$lastest_transac->field_transaction_no_value += 1;
+	}
+	else {
+		$lastest_transac->field_transaction_int_value += 1;
+		$lastest_transac->field_transaction_no_value = 1;
+	}
+
+	$char = transaction_get_char_cat();
+
+	if ($lastest_transac->field_transaction_no_value < 10) {
+		$prefix = "000";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 100) {
+		$prefix = "00";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 1000) {
+		$prefix = "0";
+	}
+
+	$cat_char = $char[$lastest_transac->field_transaction_int_value];
+	$code = $prefix.$lastest_transac->field_transaction_no_value;
+
+	/*create new transaction node*/
+	$node = new stdClass();
+	$node = clone $transaction_old_obj;
+
+	/*get old total cost*/
+	$total_cost = db_result(db_query("SELECT field_transaction_total_cost_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_old_obj->nid));
+	unset($transaction_old_obj);
+
+	$node->created = $create_date;
+	$node->changed = $create_date;
+
+	unset($node->nid);
+	unset($node->field_detail_withdraw_ref);
+
+	$node->uid = $user->uid;
+
+	$node->field_transaction_code[0]['value'] 	= $cat_char."".$code;
+	$node->field_transaction_no[0]['value'] 	= $lastest_transac->field_transaction_no_value;
+	$node->field_transaction_int[0]['value'] 	= $lastest_transac->field_transaction_int_value;
+	$node->field_transaction_char[0]['value'] 	= $cat_char;
+	$node->field_transaction_old_ref[0]['nid'] 	= $transaction_old;
+	$node->field_transaction_total_cost[0]['value'] = $total_cost + $add_cost;
+
+	$node->field_transaction_created_date[0]['value'] 	= time();
+
+	/*get new stake rate*/
+	$node->field_transaction_stake_rate[0]['value'] = transaction_get_stake_rate($node->field_transaction_total_cost[0]['value']);
+	$new_stake_rate = $node->field_transaction_stake_rate[0]['value'];
+
+	/*set employee name for term*/
+	$employee_name = db_result(db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile'));
+	$employee_tid = custom_term_set_new($employee_name, 6);
+	$node->field_employee_term[0]['value'] = $employee_tid;
+
+	$node->field_transaction_money_str[0]['value'] = $money_str;
+
+	node_save($node);
+
+	$new_transaction_nid = db_result(db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid DESC LIMIT 1", 'transaction_gold'));
+
+	/**
+	 * Add Transaction Detail
+	 **/
+	$add_cost = 0;
+	$result = db_query("SELECT * FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $transaction_old);
+	while ($detail = db_fetch_object($result)) {
+		$node_new_obj = new stdClass();
+
+		$detail_old_obj = node_load($detail->nid);
+		$node_new_obj = clone $detail_old_obj;
+
+		unset($node_new_obj->nid);
+		unset($node_new_obj->field_detail_reduce_cost[0]['value']);
+
+		$node_new_obj->field_transaction_ref['0']['nid'] = $new_transaction_nid;
+
+		/*set add-cost*/
+		$tmp_add_cost = intval(str_replace(",", "", $form_state['values'][$detail->nid]));
+		$add_cost += $tmp_add_cost;
+
+		$node_new_obj->field_detail_add_cost[0]['value'] = $tmp_add_cost;
+
+		/*Calculate current cost*/
+		$old_reduce_cost = intval($detail->field_detail_reduce_cost_value);
+		$old_add_cost = intval($detail->field_detail_add_cost_value);
+
+		$node_new_obj->field_transaction_cost[0]['value'] = ($detail->field_transaction_cost_value + $old_add_cost) - $old_reduce_cost;
+
+		node_save($node_new_obj);
+
+		unset($node_new_obj);
+	}
+
+	/*debug set new stake rate*/
+	db_query("UPDATE {content_type_transaction_gold} SET field_transaction_stake_rate_value=%f WHERE nid=%d", $new_stake_rate, $new_transaction_nid);
+
+	/**
+	 * Update data in old transaction
+	 */
+	db_query("UPDATE {content_type_transaction_gold}
+		 	  SET  field_transaction_stake_pay_value=%f,
+				   field_transaction_status_value=%d,
+				   field_transaction_add_pay_value=%d,
+				   field_transaction_operation_date_value='%s'
+		      WHERE nid=%d", $stake, 23, $add_cost, time(), $transaction_old);
+
+	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $transaction_old, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 23, $transaction_old, $old_term);
+
+	$form_state['redirect'] = "node/".$new_transaction_nid;
+}
+
+function theme_transaction_add_cost_form($form) {
+	/**
+	 * Render detail in ticket
+	 */
+	$items = array();
+
+	$result = db_query("SELECT n.title as type_name,
+							   d.nid,
+							   d.field_transaction_weight_value as weight,
+							   d.field_transaction_unit_value as unit,
+							   d.field_transaction_cost_value as cost,
+							   d.field_transaction_sub_detail_value as detail,
+							   d.field_detail_reduce_cost_value as reduce,
+							   d.field_transaction_value_value as value,
+							   d.field_detail_add_cost_value as add_cost
+					    FROM {content_type_transaction_detail} d
+						INNER JOIN {node} n ON n.nid=d.field_gold_type_ref_nid
+					    WHERE d.field_transaction_ref_nid=%d
+					    ORDER BY d.nid ASC", $form['transaction_old']['#value']);
+
+	while ($detail = db_fetch_object($result)) {
+		$remain = ($detail->cost + intval($detail->add_cost)) - intval($detail->reduce);
+
+		$items[] = array(
+			array('class'=>'type', 'data'=>$detail->type_name),
+			array('class'=>'weight', 'data'=>$detail->weight),
+			array('class'=>'unit', 'data'=>$detail->unit),
+			array('class'=>'unit', 'data'=>$detail->value),
+			array('class'=>'detail-cost', 'data'=>number_format($remain)),
+			array('class'=>'pay-reduce-cost', 'data'=>drupal_render($form[$detail->nid])),
+		);
+	}
+
+	$item_head = array(
+		t("ประเภท"),
+		t("น้ำหนัก"),
+		t("หน่วยวัด"),
+		t("จำนวน"),
+		t("ราคาจำนำ"),
+		t("จำนวนเงินที่เพิ่มยอด"),
+	);
+
+	$output .= '<div class="detail-reduce">
+					'.theme('table', $item_head, $items).'
+				</div>';
+
+	$rows[] = array(
+		array('class'=>'stake', 'data'=>drupal_render($form['stake_show'])),
+		array('class'=>'cost', 'data'=>""),
+		array('class'=>'pay-cost', 'data'=>""),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_display'])),
+		array('class'=>'date', 'data'=>drupal_render($form['date_reduce_next'])),
+		array('class'=>'employee', 'data'=>drupal_render($form['reducer'])),
+		array('class'=>'submit', 'data'=>drupal_render($form['submit'])),
+	);
+
+	$header = array(
+		"ดอกเบี้ย",
+		"จำนวนเงินที่เพิ่มยอด",
+		"ต้องจ่ายให้ลูกค้า",
+		"วันที่ออกตั๋วใหม่",
+		"วันที่ตั๋วครบกำหนด",
+		"ผู้รับต่อตั๋ว",
+		"ดำเนินการ"
+	);
+
+	$header2 = array(
+		"จำนวนเงินทั้งหมด",
+		"จำนวนเงินทั้งหมดเป็นตัวอักษร",
+	);
+
+	$rows2[] = array(
+		array('class'=>'markup-total-money', 'data'=>drupal_render($form['total_money'])),
+		array('class'=>'remian-money-str', 'data'=>drupal_render($form['remain_money'])),
+	);
+
+	$output .= '<div class="reduce-wrapper">';
+	$output .= '
+			<div class="reduce-form">
+				'.theme('table', $header2, $rows2).'
+			</div>
+			<div class="reduce-form">
+				'.theme('table', $header, $rows).'
+			</div>';
+	$output .= '</div>';
+
+	$output .= drupal_render($form);
+	return $output;
+}
+
+/**
+ * Calculate reduce stake condition
+ * @return stake plush
+ */
+function transaction_calculate_reduce_stake($transaction_nid, $normal_stake, $real_end_date, $total_cost) {
+	$harf_month = MONTH / 2;
+	$current = time();
+
+	$type = transaction_check_month_type($transaction_nid);
+
+	if ($transaction_nid) {
+		$old_transac = 0;
+		$old_transac = db_result(db_query("SELECT field_transaction_old_ref_nid
+										   FROM {content_type_transaction_gold}
+										   WHERE nid=%d", $transaction_nid));
+	}
+
+	$reduce_stake = 0;
+
+	if ($real_end_date >= $current) {
+		/*check for pay before dead line*/
+
+		/*step 1. check this transaction is have old transction or not*/
+		if ($old_transac) {
+			/*update code at 30 - Aus - 2012*/
+			$create_date = db_result(db_query("SELECT created FROM {node} WHERE nid=%d", $transaction_nid));
+			$current_interval = thai_time_get_interval_day($create_date, time());
+
+			/*step 2. total cost is upper or lower max price*/
+			if ($total_cost < 10000) {
+				if ($type == 1) {
+					if ($current_interval <= 15) {
+						$reduce_stake = ($normal_stake) / 2;
+					}
+					else if ($current_interval > 15) {
+						$reduce_stake = $normal_stake;
+					}
+				}
+				else {
+					/*calculate four month ticket*/
+					if ($current_interval <= 15) {
+						$reduce_stake = ($normal_stake) / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 30) {
+						$reduce_stake = $normal_stake;
+					}
+					else if ($current_interval > 30 && $current_interval <= 60) {
+						$reduce_stake = $normal_stake + ($normal_stake / 2);
+					}
+					else if ($current_interval > 60 && $current_interval <= 90) {
+						$reduce_stake = ($normal_stake * 2) + ($normal_stake / 2);
+					}
+					else if ($current_interval > 90 && $current_interval <= 120) {
+						$reduce_stake = ($normal_stake * 3) + ($normal_stake / 2);
+					}
+					/*check for expire ticket*/
+				}
+			}
+			else if ($total_cost >= 10000 && $total_cost < UPPER_BOUND_COST){
+
+				if ($type == 1) {
+					if ($current_interval <= 10) {
+						$reduce_stake = $normal_stake * (1/3);
+					}
+					else if ($current_interval > 10 && $current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 20) {
+						$reduce_stake = $normal_stake * (2/3);
+					}
+					else {
+						$reduce_stake = $normal_stake;
+					}
+				}
+				else {
+					/*for four month ticket*/
+					if ($current_interval <= 30) {
+						$current_interval = $current_interval;
+						$pre_stake = 0;
+					}
+					else if ($current_interval > 30 && $current_interval <= 60) {
+						$current_interval = $current_interval - 30;
+						$pre_stake = $normal_stake;
+					}
+					else if ($current_interval > 60 && $current_interval <= 90) {
+						$current_interval = $current_interval - 60;
+						$pre_stake = $normal_stake * 2;
+					}
+					else if ($current_interval > 90 && $current_interval <= 120) {
+						$current_interval = $current_interval - 60;
+						$pre_stake = $normal_stake * 2;
+					}
+
+					/*Normal Calculate*/
+					if ($current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 30) {
+						$reduce_stake = $normal_stake;
+					}
+
+					/*Summation all*/
+					$reduce_stake = $reduce_stake + $pre_stake;
+				}
+
+			}
+			else if ($total_cost >= UPPER_BOUND_COST) {
+				if ($type == 1) {
+					if ($current_interval <= 10) {
+						$reduce_stake = $normal_stake * (1/3);
+					}
+					else if ($current_interval > 10 && $current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 20) {
+						$reduce_stake = $normal_stake * (2/3);
+					}
+					else {
+						$reduce_stake = $normal_stake;
+					}
+				}
+				else {
+					/*for four month ticket*/
+					if ($current_interval <= 30) {
+						$current_interval = $current_interval;
+						$pre_stake = 0;
+					}
+					else if ($current_interval > 30 && $current_interval <= 60) {
+						$current_interval = $current_interval - 30;
+						$pre_stake = $normal_stake;
+					}
+					else if ($current_interval > 60 && $current_interval <= 90) {
+						$current_interval = $current_interval - 60;
+						$pre_stake = $normal_stake * 2;
+					}
+					else if ($current_interval > 90 && $current_interval <= 120) {
+						$current_interval = $current_interval - 60;
+						$pre_stake = $normal_stake * 2;
+					}
+
+					/*Normal Calculate*/
+					if ($current_interval <= 10) {
+						$reduce_stake = $normal_stake * (1/3);
+					}
+					else if ($current_interval > 10 && $current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 20) {
+						$reduce_stake = $normal_stake * (2/3);
+					}
+					else {
+						$reduce_stake = $normal_stake;
+					}
+
+					$reduce_stake = $reduce_stake + $pre_stake;
+				}
+			}
+		}
+		/*for new transaction*/
+		else {
+			/*update code at 30 - Aus - 2012*/
+			$create_date = db_result(db_query("SELECT created FROM {node} WHERE nid=%d", $transaction_nid));
+			$current_interval = thai_time_get_interval_day($create_date, time());
+
+			if ($total_cost < UPPER_BOUND_COST) {
+				/*update code at 7 - Mar - 2013*/
+				if ($type == 1) {
+					if ($current_interval <= 15) {
+						$reduce_stake = ($normal_stake) / 2;
+					}
+					else if ($current_interval > 15) {
+						$reduce_stake = $normal_stake;
+					}
+				}
+				else {
+					/*Edit by Phisan Sookkhee 1-09-2013*/
+					/*calculate four month ticket*/
+					if ($current_interval <= 15) {
+						$reduce_stake = ($normal_stake) / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 30) {
+						$reduce_stake = $normal_stake;
+					}
+
+					// if ($current_interval <= 30) {
+					// 	$current_interval = $current_interval;
+					// 	$pre_stake = 0;
+					// }
+					// else if ($current_interval > 30 && $current_interval <= 60) {
+					// 	$current_interval = $current_interval - 30;
+					// 	$pre_stake = $normal_stake;
+					// }
+					// else if ($current_interval > 60 && $current_interval <= 90) {
+					// 	$current_interval = $current_interval - 60;
+					// 	$pre_stake = $normal_stake * 2;
+					// }
+					// else if ($current_interval > 90 && $current_interval <= 120) {
+					// 	$current_interval = $current_interval - 60;
+					// 	$pre_stake = $normal_stake * 2;
+					// }
+
+					// /*Normal Calculate*/
+					// /*edit by Phisan Sookkhee 1-9-2013*/
+					// if ($current_interval <= 10) {
+					// 	$reduce_stake = $normal_stake * (1/3);
+					// }
+					// else if ($current_interval <= 15) {
+					// 	$reduce_stake = $normal_stake / 2;
+					// }
+					// else if ($current_interval > 15 && $current_interval <= 30) {
+					// 	$reduce_stake = $normal_stake;
+					// }
+
+					// $reduce_stake = $reduce_stake + $pre_stake;
+
+					/* Old Code */
+					// if ($current_interval <= 15) {
+					// 	$reduce_stake = ($normal_stake) / 2;
+					// }
+					// else if ($current_interval > 15 && $current_interval <= 30) {
+					// 	$reduce_stake = $normal_stake;
+					// }
+					// else if ($current_interval > 30 && $current_interval <= 60) {
+					// 	$reduce_stake = $normal_stake + ($normal_stake / 2);
+					// }
+					// else if ($current_interval > 60 && $current_interval <= 90) {
+					// 	$reduce_stake = ($normal_stake * 2) + ($normal_stake / 2);
+					// }
+					// else if ($current_interval > 90 && $current_interval <= 120) {
+					// 	$reduce_stake = ($normal_stake * 3) + ($normal_stake / 2);
+					// }
+					/*check for expire ticket*/
+				}
+			}
+			else if ($total_cost >= UPPER_BOUND_COST){
+				if ($type == 1) {
+					if ($current_interval <= 10) {
+						$reduce_stake = $normal_stake * (1/3);
+					}
+					else if ($current_interval > 10 && $current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval > 15 && $current_interval <= 20) {
+						$reduce_stake = $normal_stake * (2/3);
+					}
+					else {
+						$reduce_stake = $normal_stake;
+					}
+				}
+				else {
+					/*Normal Calculate*/
+					/*edit by Phisan Sookkhee 1-9-2013*/
+					if ($current_interval <= 10) {
+						$reduce_stake = $normal_stake * (1/3);
+					}
+					else if ($current_interval <= 15) {
+						$reduce_stake = $normal_stake / 2;
+					}
+					else if ($current_interval <= 20) {
+						$reduce_stake = $normal_stake * (0.66666);
+					}
+					else if ($current_interval <= 31) {
+						$reduce_stake = $normal_stake * 1;
+					}
+				}
+
+			}
+		}
+
+	}
+	else {
+		$day_difference = thai_time_get_interval_day($real_end_date, $current);
+
+		/*Case 1*/
+		if ($day_difference == 0) {
+			$reduce_stake = $normal_stake * $type;
+		}
+		/*Case 2*/
+		/*update code at 30 - Aus - 2012*/
+		elseif ($day_difference != 0 && !$old_transac) {
+			if ($total_cost < UPPER_BOUND_COST) {
+				if ($day_difference <= $harf_month) {
+					$reduce_stake = ($normal_stake * $type) + ($normal_stake / 2);
+				}
+				else {
+					$reduce_stake = ($normal_stake * $type) * 2;
+				}
+			}
+			elseif ($total_cost >= UPPER_BOUND_COST) {
+				if ($day_difference <= 10) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake * (1/3) );
+				}
+				elseif ($day_difference > 10 && $day_difference <= 15) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake / 2 );
+				}
+				elseif ($day_difference > 15 && $day_difference <= 20) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake * (2/3) );
+				}
+				elseif ($day_difference <= MONTH) {
+					$reduce_stake = ($normal_stake * $type) * 2;
+				}
+			}
+
+			/*old code*/
+			// if ($day_difference <= $harf_month) {
+			// 	$reduce_stake = ($normal_stake * $type) + ($normal_stake / 2);
+			// }
+			// else {
+			// 	$reduce_stake = ($normal_stake * $type) * 2;
+			// }
+		}
+		/*Case 3*/
+		elseif ($day_difference != 0 && $old_transac) {
+			if ($total_cost < UPPER_BOUND_COST) {
+				if ($day_difference <= $harf_month) {
+					$reduce_stake = ($normal_stake * $type) + ($normal_stake / 2);
+				}
+				else {
+					$reduce_stake = ($normal_stake * $type) * 2;
+				}
+			}
+			elseif ($total_cost >= UPPER_BOUND_COST) {
+				if ($day_difference <= 10) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake * (1/3) );
+				}
+				elseif ($day_difference > 10 && $day_difference <= 15) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake / 2 );
+				}
+				elseif ($day_difference > 15 && $day_difference <= 20) {
+					$reduce_stake = ($normal_stake * $type) + ( $normal_stake * (2/3) );
+				}
+				elseif ($day_difference <= MONTH) {
+					$reduce_stake = ($normal_stake * $type) * 2;
+				}
+			}
+		}
+
+	}
+	return $reduce_stake;
+}
+
+/**
+ * function
+ */
+function transaction_check_month_type(&$transaction_id){
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction_id);
+	$type = db_result($result);
+
+	if ($type == 0) {
+		$type = 4;
+	}
+
+	return $type;
+}
+
+/**
+ * Calculate renew stake condition
+ * @return stake
+ */
+function transaction_calculate_renew_stake($normal_stake, $real_end_date) {
+	$harf_month = MONTH / 2;
+	$current = time();
+
+	$renew_stake = 0;
+
+	if ($real_end_date >= $current) {
+		$renew_stake = $normal_stake;
+	}
+	else {
+		$day_difference = thai_time_get_interval_day($real_end_date, $current);
+		if ($day_difference <= $harf_month) {
+			$renew_stake = $normal_stake;
+		}
+		else {
+			$renew_stake = $normal_stake * 2;
+		}
+	}
+
+	return $renew_stake;
+}
+
+function transaction_renew_stake_announce_message($normal_stake, $real_end_date, $opr=NULL) {
+	$arg_str = $_GET['q'];
+	$arg = explode('/', $arg_str);
+
+	/*Get create ticket date*/
+	$result = db_query("SELECT created FROM {node} WHERE nid=%d", $arg[1]);
+	$create_date = db_result($result);
+
+	$msg = array(
+		'#boundary_date' => thai_time_format($real_end_date, "d-F-Y"),
+		'#current_date' => thai_time_format(time(), "d-F-Y"),
+		'#diff_date' => thai_time_get_interval_day($real_end_date, time()),
+		'#stake' => number_format(transaction_calculate_renew_stake($normal_stake, $real_end_date)),
+		'#type_msg' => '',
+	);
+
+	if ($opr == 'renew') {
+		$msg['!type_msg'] = "ต่อตัว";
+	}
+	elseif ($opr == 'close') {
+		$msg['!type_msg'] = "ไถ่ถอนทั้งหมด";
+	}
+
+	$current_interval = thai_time_get_interval_day($create_date, time());
+	$total_interval = $current_interval; // + $msg['#diff_date'];
+
+	$msg['#total_interval'] = $total_interval;
+
+	// $msg_stake = '<div class="">'.t("ต้องชำระดอกเบี้ยเป็นเงินทั้งสิ้น #stake บาท", $msg).'</div>';
+
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $arg[1]);
+	$type = db_result($result);
+
+	if ($type == 0) {
+		$msg['!month'] = 4;
+	}
+	elseif ($type == 1) {
+		$msg['!month'] = 1;
+	}
+
+	$output .= '<div class="stake-announce">
+					<div class="line">'
+						.t("<span class='announce'>ตั๋วครบกำหนดวันที่ #boundary_date</span>
+						 	<span class='announce'>วันที่มา!type_msg #current_date</span>
+						    <span class='announce'>เกินกำหนดมา #diff_date วัน</span>
+						    <span class='announce'>คิดเป็น #total_interval วัน,</span>
+						    <span><b>หมายเหตุ :</b> เป็นตั๋วประเภท !month เดือน</span>", $msg).
+					'</div>
+					'.$msg_stake.'
+					'.$type_msg.'
+				</div>';
+
+	return $output;
+}
+
+function transaction_reduce_stake_announce_message($normal_stake, $real_end_date, $total_money, $transac_nid, $opr) {
+	$arg_str = $_GET['q'];
+	$arg = explode('/', $arg_str);
+
+	/*Get create ticket date*/
+	$result = db_query("SELECT created FROM {node} WHERE nid=%d", $arg[1]);
+	$create_date = db_result($result);
+
+	$msg = array(
+		'#created' => thai_time_format($create_date),
+		'#boundary_date' => thai_time_format($real_end_date, "d-F-Y"),
+		'#current_date' => thai_time_format(time(), "d-F-Y"),
+		'#diff_date' => thai_time_get_interval_day($real_end_date, time()),
+		'#stake' => number_format(transaction_calculate_reduce_stake($transac_nid, $normal_stake, $real_end_date, $total_money))
+	);
+
+	$current_interval = thai_time_get_interval_day($create_date, time());
+
+	// $total_interval = $current_interval + $msg['#diff_date'];
+	$total_interval = $current_interval;
+
+	$msg['#total_interval'] = $total_interval;
+
+	$renew_check = db_result(db_query("SELECT field_transaction_old_ref_nid FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid));
+	if ($renew_check) {
+		$old_code = db_result(db_query("SELECT field_transaction_code_value FROM {content_type_transaction_gold} WHERE nid=%d", $renew_check));
+		$msg['#renew'] = t("เคยมีการต่อตั๋วมาก่อนหน้านี้แล้ว จากตั๋วหมายเลข ".$old_code);
+	}else {
+		 $msg['#renew'] = t("ต่อตั๋วครั้งแรก");
+	}
+
+	if ($total_money < UPPER_BOUND_COST) {
+		$msg['#cost_rate'] = t("ต่ำกว่า 100,000");
+		$msg['#stake_desc1'] = t("ไม่เกิน 15 วัน ปัดเป็นครึ่งเดือน");
+		$msg['#stake_desc2'] = t(", เกินกำหนดมากว่า 15 วันคิดดอกเบี้ยเต็มเดือน");
+
+		$lower_msg = '<div class="note">'.t("#stake_desc1#stake_desc2", $msg).'</div>';
+	}else {
+		$msg['#cost_rate'] = t("มากว่าหรือเท่ากับ 100,000");
+		if (!$renew_check) {
+			$msg['#stake_desc1'] = t("ไม่เกิน 15 วัน ปัดเป็นครึ่งเดือน");
+			$msg['#stake_desc2'] = t(", เกินกำหนดมากว่า 15 วันคิดดอกเบี้ยเต็มเดือน");
+			$lower_msg = '<div class="note">'.t("#stake_desc1#stake_desc2", $msg).'</div>';
+		}
+	}
+
+	if ($opr == 'reduce') {
+		$msg['!type_msg'] = "ลดยอดเงินต้น";
+	}
+	elseif ($opr == 'add_cost') {
+		$msg['!type_msg'] = "เพ่ิมยอดเงินต้น";
+	}
+	elseif ($opr == 'withdraw') {
+		$msg['!type_msg'] = "ไถ่ถอนบางส่วน";
+	}
+
+
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $arg[1]);
+	$type = db_result($result);
+
+	if ($type == 0) {
+		$msg['!month'] = 4;
+	}
+	elseif ($type == 1) {
+		$msg['!month'] = 1;
+	}
+
+	$output .= '<div class="stake-announce">
+					<div class="line">'
+						.t("<span class='announce'>วันที่ออกตั๋ว #created</span><br />
+							<span class='announce'>ตั๋วครบกำหนดวันที่ #boundary_date</span>
+						 	<span class='announce'>วันที่มา!type_msg #current_date</span>
+						    <span class='announce'>เกินกำหนดมา #diff_date วัน</span>
+						    <span class='announce'>คิดเป็น #total_interval วัน,</span>
+						    <span><b>หมายเหตุ :</b> เป็นตั๋วประเภท !month เดือน</span>", $msg).
+					'</div>
+					<div class="">'.t("คิดดอกเบี้ยเป็นเงินทั้งสิ้น #stake บาท", $msg).'</div>
+					<!--
+					<div class="note-condition">'.t("#renew , ยอดเงิน #cost_rate บาท", $msg).'</div>
+					'.$lower_msg.'
+					-->
+				</div>';
+
+	return $output;
+}
+
+function trasaction_renew_show_link(&$node) {
+	$pay = db_fetch_object(db_query("SELECT field_transaction_stake_pay_value, field_transaction_close_pay_value
+									FROM {content_type_transaction_gold}
+									WHERE nid=%d", $node->nid));
+
+
+	if ($pay->field_transaction_close_pay_value != "") {
+		$result = db_query("SELECT n.title
+							FROM {content_type_transaction_gold} g
+							INNER JOIN {node} n ON n.uid=g.field_withdraw_by_uid
+							WHERE g.nid=%d AND n.type='%s'", $node->nid, 'employee_profile');
+		$name = db_result($result);
+
+		$output .= '<div class="renew-message-link">
+						'.t("ตั๋วจำนำนี้ได้ถูกไถ่ถอนแล้ว").'
+						'.t("โดย").' : '.$name.'
+					</div>';
+	}
+	elseif ($pay->field_transaction_stake_pay_value) {
+
+		$renew_nid = db_result(db_query("SELECT nid
+									     FROM {content_type_transaction_gold}
+									     WHERE field_transaction_old_ref_nid=%d AND field_transaction_status_value !=%d LIMIT 1", $node->nid, CANCEL_TERM));
+
+		$renew_code = db_result(db_query("SELECT field_transaction_code_value FROM {content_type_transaction_gold} WHERE nid=%d", $renew_nid));
+
+		$output .= '<div class="renew-message-link">
+						'.t("ตั๋วจำนำนี้ได้ถูกต่ออายุตั๋วแล้วโดยหมายเลขตั๋วที่ออกให้ใหม่คือ ".l($renew_code, "node/".$renew_nid)).'
+					</div>';
+	}
+
+	return $output;
+}
+
+function transaction_renew_link_parent($transac) {
+	$output = '';
+
+	$parent_nid = db_result(db_query("SELECT field_transaction_old_ref_nid FROM {content_type_transaction_gold}  WHERE nid=%d", $transac->nid));
+	$parent     = db_fetch_object(db_query("SELECT nid, field_transaction_code_value FROM {content_type_transaction_gold}  WHERE nid=%d", $parent_nid));
+
+	if ($parent_nid) {
+		$output .= '<div class="renew-message-link">
+						'.t("ตั๋วจำนำนี้ได้ถูกต่ออายุตั๋วมาจากตั๋วจำนำหมายเลข ".l($parent->field_transaction_code_value, "node/".$parent->nid)).'
+					</div>';
+	}
+
+	return $output;
+}
+
+function transaction_renew_form(&$form_state, $transac_nid, $stake_arr, $end_date_arr, $real_end_date) {
+	global $user;
+	$harf_month = MONTH / 2;
+
+	// Load Transaction Node
+	$transaction = node_load($transac_nid);
+
+	$result = db_query("SELECT field_transaction_interval_type_value FROM {content_type_transaction_gold} WHERE nid=%d", $transac_nid);
+	$ticket_type = db_result($result);
+
+	if ($ticket_type == 1) {
+		/*1 Month*/
+
+		/*case 1*/
+		$date = format_date($end_date_arr[0], 'custom', 'd-m-Y');
+		list($day, $month, $year) = explode('-', $date);
+
+		$end_date_1 = mktime(date("H"), date("i"), date("s"), $month, $day, $year);
+		$next_date_1 = transaction_calulate_interval_thai($end_date_1);
+
+		/* ------------------------------ */
+
+		/*case 2*/
+		$date = format_date($end_date_arr[1], 'custom', 'd-m-Y');
+		list($day, $month, $year) = explode('-', $date);
+
+		$end_date_2 = mktime(date("H"), date("i"), date("s"), $month, $day, $year);
+		$next_date_2 = transaction_calulate_interval_thai($end_date_2);
+
+		/* ------------------------------ */
+	}
+	elseif ($ticket_type == 0) {
+		/*4 Month*/
+		$date = format_date($real_end_date, 'custom', 'd-m-Y');
+		list($day, $month, $year) = explode('-', $date);
+
+		$end_date_1 = mktime(date("H"), date("i"), date("s"), $month, $day, $year);
+
+		$stake_arr[0] = $stake_arr[0] * 1;
+		$stake_arr[1] = $stake_arr[0] * 2;
+		$stake_arr[2] = $stake_arr[0] * 3;
+		$stake_arr[3] = $stake_arr[0] * 4;
+	}
+
+	$form = array();
+
+	/*Record Field*/
+	$form['transaction_old'] = array(
+		'#type' => 'value',
+		'#value' => $transac_nid
+	);
+
+	$form['stake'] = array(
+		'#type' => 'textfield',
+		'#default_value' => $stake_arr[0],
+		'#title' => t("ดอกเบี้ย - ค่าบันทึก"),
+	);
+
+	$form['renew_date'] = array(
+		'#type' => 'textfield',
+		'#default_value' => $real_end_date,
+		'#title' => t("วันออกตั๋ว - ค่าบันทึก"),
+	);
+
+	/*check field*/
+	$form['end_date_size'] = array(
+		'#type' => 'textfield',
+		'#value' => count($end_date_arr),
+		'#title' => t("ขนาดของ array ที่คำนวน"),
+	);
+
+	/*End Record Field*/
+
+	$form['stake_show'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="stake-show">'.number_format($stake_arr[0]).'</div>'
+	);
+
+	$name = db_result(db_query("SELECT title FROM {node} WHERE type='%s' AND uid=%d", 'employee_profile', $user->uid));
+	if ($name == "") {
+		$name = "ผู้จัดการ";
+	}
+
+	$form['renewer'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="">'.$name.'</div>'
+	);
+
+
+	if ($ticket_type == 1) {
+		/*Case One*/
+		$start_date_1 = transaction_calulate_interval_thai($transaction->created);
+		$end_date_1 = transaction_calulate_interval_thai($start_date_1);
+
+		$form['start_date_1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($start_date_1, 'd-F-Y', 1),
+			'#title' => t("1 เดือน วันออกตั๋ว"),
+		);
+
+		$form['end_date_1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_1, 'd-F-Y', 1),
+			'#title' => t("1 เดือน วันสิ้นสุด"),
+		);
+
+		$form['date_renew_display-1'] = array(
+			'#type' => 'markup',
+			'#value' => '<div class="">'.thai_time_format($end_date_1, 'd-F-Y', 1).'</div>'
+		);
+
+		$form['date_renew_next-1'] = array(
+			'#type' => 'markup',
+			'#value' => '<div class="">'.thai_time_format($next_date_1, 'd-F-Y', 1).'</div>'
+		);
+
+		$form['date_renew_value-1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_1, 'd-F-Y', 1)
+		);
+
+		$form['date_renew_next_value-1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($next_date_1, 'd-F-Y', 1)
+		);
+
+		$form['date_renew_stamp-1'] = array(
+			'#type' => 'textfield',
+			'#value' => $end_date_1,
+			'#title' => t("วันออกตั๋วงวดที่ 1"),
+		);
+
+		$form['date_renew_stamp_next-1'] = array(
+			'#type' => 'textfield',
+			'#value' => $next_date_1,
+			'#title' => t("วันครบกำหนดตั๋วงวดที่ 1"),
+		);
+
+		$form['stake-1'] = array(
+			'#type' => 'textfield',
+			'#value' => $stake_arr[0],
+			'#title' => t("ดอกเบี้ยงวดที่ 1"),
+		);
+	}
+	else {
+		/*Case Two*/
+		/* 4 Month Ticket*/
+		$start_date_1 = transaction_calulate_interval_thai($transaction->created);
+		$start_date_2 = transaction_calulate_interval_thai($start_date_1);
+		$start_date_3 = transaction_calulate_interval_thai($start_date_2);
+		$start_date_4 = transaction_calulate_interval_thai($start_date_3);
+
+		// drupal_set_message(thai_time_format($transaction->created, 'd-F-Y', 1));
+
+		$end_date_1 = transaction_calulate_interval_end_thai_4_month($start_date_1);
+		$end_date_2 = transaction_calulate_interval_end_thai_4_month($start_date_2);
+		$end_date_3 = transaction_calulate_interval_end_thai_4_month($start_date_3);
+		$end_date_4 = transaction_calulate_interval_end_thai_4_month($start_date_4);
+
+		$form['start_date_1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($start_date_1, 'd-F-Y', 1),
+			'#title' => t("1 เดือน วันออกตั๋ว"),
+		);
+
+		$form['end_date_1'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_1, 'd-F-Y', 1),
+			'#title' => t("1 เดือน วันสิ้นสุด"),
+		);
+
+		$form['start_date_2'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($start_date_2, 'd-F-Y', 1),
+			'#title' => t("2 เดือน วันออกตั๋ว"),
+		);
+
+		$form['end_date_2'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_2, 'd-F-Y', 1),
+			'#title' => t("2 เดือน วันสิ้นสุด"),
+		);
+
+		$form['start_date_3'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($start_date_3, 'd-F-Y', 1),
+			'#title' => t("3 เดือน วันออกตั๋ว"),
+		);
+
+		$form['end_date_3'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_3, 'd-F-Y', 1),
+			'#title' => t("3 เดือน วันสิ้นสุด"),
+		);
+
+		$form['start_date_4'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($start_date_4, 'd-F-Y', 1),
+			'#title' => t("4 เดือน วันออกตั๋ว"),
+		);
+
+		$form['end_date_4'] = array(
+			'#type' => 'textfield',
+			'#value' => thai_time_format($end_date_4, 'd-F-Y', 1),
+			'#title' => t("4 เดือน วันสิ้นสุด"),
+		);
+
+		$form['stake_1'] = array(
+			'#type' => 'textfield',
+			'#value' => $stake_arr[0],
+			'#title' => t("ดอก 1 "),
+		);
+
+		$form['stake_2'] = array(
+			'#type' => 'textfield',
+			'#value' => $stake_arr[1],
+			'#title' => t("ดอก 2"),
+		);
+
+		$form['stake_3'] = array(
+			'#type' => 'textfield',
+			'#value' => $stake_arr[2],
+			'#title' => t("ดอก 3"),
+		);
+
+		$form['stake_4'] = array(
+			'#type' => 'textfield',
+			'#value' => $stake_arr[3],
+			'#title' => t("ดอก 4"),
+		);
+
+		$form['start_date_stamp_1'] = array(
+			'#type' => 'textfield',
+			'#value' => $start_date_1,
+			'#title' => t("เริ่ม 1"),
+		);
+
+		$form['end_date_stamp_1'] = array(
+			'#type' => 'textfield',
+			'#value' => $end_date_1,
+			'#title' => t("หมด 1"),
+		);
+
+		$form['start_date_stamp_2'] = array(
+			'#type' => 'textfield',
+			'#value' => $start_date_2,
+			'#title' => t("เริ่ม 2"),
+		);
+
+		$form['end_date_stamp_2'] = array(
+			'#type' => 'textfield',
+			'#value' => $end_date_2,
+			'#title' => t("หมด 2"),
+		);
+
+		$form['start_date_stamp_3'] = array(
+			'#type' => 'textfield',
+			'#value' => $start_date_3,
+			'#title' => t("เริ่ม 3"),
+		);
+
+		$form['end_date_stamp_3'] = array(
+			'#type' => 'textfield',
+			'#value' => $end_date_3,
+			'#title' => t("หมด 3"),
+		);
+
+		$form['start_date_stamp_4'] = array(
+			'#type' => 'textfield',
+			'#value' => $start_date_4,
+			'#title' => t("เริ่ม 4"),
+		);
+
+		$form['end_date_stamp_4'] = array(
+			'#type' => 'textfield',
+			'#value' => $end_date_4,
+			'#title' => t("หมด 4"),
+		);
+
+
+	}
+
+	$form['date_renew_display-1'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="renew-display-1">....</div>'
+	);
+
+	$form['date_renew_display-end-1'] = array(
+		'#type' => 'markup',
+		'#value' => '<div class="renew-display-end-1">....</div>'
+	);
+
+
+	/*******/
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t("ดำเนินการต่อตั๋ว")
+	);
+	return $form;
+}
+
+function transaction_renew_form_submit($form_id, &$form_state) {
+	global $user;
+
+	$transaction_old = $form_state['values']['transaction_old'];
+	$stake  = $form_state['values']['stake'];
+	$create_date = $form_state['values']['renew_date'];
+
+	/**
+	 * Load Old Transaction
+	 */
+	$transaction_old_obj = node_load($transaction_old);
+
+	/**
+	 * Create new Traction
+	 **/
+
+	/*get new code*/
+	$result = db_query("SELECT nid, field_transaction_no_value, field_transaction_int_value
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_no_value IS NOT NULL
+						ORDER BY nid DESC LIMIT 1");
+
+	$lastest_transac = db_fetch_object($result);
+
+	if ($lastest_transac->field_transaction_no_value == "") {
+		$lastest_transac->field_transaction_no_value = 0;
+		$lastest_transac->field_transaction_int_value = 1;
+	}
+
+	if ($lastest_transac->field_transaction_no_value < 999) {
+		$lastest_transac->field_transaction_no_value += 1;
+	}
+	else {
+		$lastest_transac->field_transaction_int_value += 1;
+		$lastest_transac->field_transaction_no_value = 1;
+	}
+
+	$char = transaction_get_char_cat();
+
+	if ($lastest_transac->field_transaction_no_value < 10) {
+		$prefix = "000";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 100) {
+		$prefix = "00";
+	}
+	elseif ($lastest_transac->field_transaction_no_value < 1000) {
+		$prefix = "0";
+	}
+
+	$cat_char = $char[$lastest_transac->field_transaction_int_value];
+	$code = $prefix.$lastest_transac->field_transaction_no_value;
+
+	/*create new transaction node*/
+	$node = new stdClass();
+	$node = clone $transaction_old_obj;
+
+	$node->created = $create_date;
+	$node->changed = $create_date;
+
+	unset($node->nid);
+	unset($node->field_detail_withdraw_ref);
+
+	$node->uid = $user->uid;
+
+	$node->field_transaction_code[0]['value'] 	= $cat_char."".$code;
+	$node->field_transaction_no[0]['value'] 	= $lastest_transac->field_transaction_no_value;
+	$node->field_transaction_int[0]['value'] 	= $lastest_transac->field_transaction_int_value;
+	$node->field_transaction_char[0]['value'] 	= $cat_char;
+	$node->field_transaction_old_ref[0]['nid'] 	= $transaction_old;
+
+	$node->field_transaction_created_date[0]['value'] 	= time();
+
+	$node->field_transaction_total_cost[0]['value']  = db_result(db_query("SELECT field_transaction_total_cost_value
+																		   FROM {content_type_transaction_gold}
+																		   WHERE nid=%d", $transaction_old));
+
+	/*set employee name for term*/
+	$employee_name = db_result(db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $user->uid, 'employee_profile'));
+	$employee_tid = custom_term_set_new($employee_name, 6);
+	$node->field_employee_term[0]['value'] = $employee_tid;
+
+	node_save($node);
+
+	$new_transaction_nid = db_result(db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid DESC LIMIT 1", 'transaction_gold'));
+
+	/**
+	 * Add Transaction Detail
+	 **/
+	$result = db_query("SELECT nid FROM {content_type_transaction_detail} WHERE field_transaction_ref_nid=%d", $transaction_old);
+	while ($detail_nid = db_result($result)) {
+		$node_new_obj = new stdClass();
+
+		$detail_old_obj = node_load($detail_nid);
+		$node_new_obj = clone $detail_old_obj;
+
+		unset($node_new_obj->nid);
+
+		$node_new_obj->field_transaction_ref['0']['nid'] = $new_transaction_nid;
+
+		node_save($node_new_obj);
+
+		unset($node_new_obj);
+	}
+
+	/**
+	 * Update data in old transaction
+	 */
+	db_query("UPDATE {content_type_transaction_gold}
+		 	  SET  field_transaction_stake_pay_value=%f,
+				   field_transaction_status_value=%d,
+				   field_transaction_operation_date_value='%s'
+		      WHERE nid=%d", $stake, 23, time(), $transaction_old);
+
+	/**
+	 * set status of old transaction
+	 */
+	$old_term = db_result(db_query("SELECT t.tid
+							   		FROM {term_node} t
+							   		INNER JOIN {term_data} d ON d.tid=t.tid
+							   		WHERE nid=%d AND d.vid=%d", $transaction_old, 2));
+
+	db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 23, $transaction_old, $old_term);
+
+	$form_state['redirect'] = "node/".$new_transaction_nid;
+}
+
+function transaction_renew_link($transaction_nid) {
+	$node = node_load($transaction_nid);
+	$access = transaction_renew_check_access($node);
+
+	if ($access) {
+		$check = db_fetch_object(db_query("SELECT field_transaction_stake_pay_value, field_transaction_ticket_status_value
+									 FROM {content_type_transaction_gold}
+									 WHERE nid=%d", $transaction_nid));
+
+		$path = "http://".$_SERVER['SERVER_NAME'];
+		$fragment = '#content-output';
+
+		if ($check->field_transaction_stake_pay_value == "" && $check->field_transaction_ticket_status_value != 1) {
+			$option[] = '<option value="">'.t("--เลือก--").'</option>';
+			$option[] = '<option value="'.$path.url("node/".$transaction_nid."/renew").$fragment.'">'.t("ต่อตั๋ว").'</option>';
+			$option[] = '<option value="'.$path.url("node/".$transaction_nid."/reduce").$fragment.'">'.t("ลดยอดจำนำ").'</option>';
+			$option[] = '<option value="'.$path.url("node/".$transaction_nid."/add-cost").$fragment.'">'.t("เพิ่มยอดจำนำ").'</option>';
+			$option[] = '<option value="'.$path.url("node/".$transaction_nid."/withdraw").$fragment.'">'.t("ไถ่ถอนบางส่วน").'</option>';
+			$option[] = '<option value="'.$path.url("node/".$transaction_nid."/close").$fragment.'">'.t("ไถ่ถอน").'</option>';
+
+			$output = '<select class="operation" id="'.$transaction_nid.'" onchange=operation_goto('.$transaction_nid.')>'
+							.implode('', $option).
+					   '</select>';
+
+			return $output;
+		}
+	}
+
+}
+
+/**
+ * Search customer name
+ */
+function transaction_ticket_search() {
+	$output = '';
+	$output = drupal_get_form(transaction_customer_search_form);
+	return $output;
+}
+
+/**
+ * Get CCK Form for Add new User.
+ **/
+function transaction_ticket_new() {
+	$output = '';
+	$customer_name = $_GET['customer_name'];
+
+	list($name, $lname) = explode(" ", $customer_name);
+
+	/*Get CCK Form*/
+	$new_customer = new stdClass();
+	$new_customer->type = 'customer_profile';
+
+	$new_customer->field_customer_name[0]['value'] = $name;
+	$new_customer->field_customer_lname[0]['value'] = $lname;
+
+	module_load_include('inc', 'node', 'node.pages');
+	$output .= drupal_get_form('customer_profile_node_form', $new_customer);
+
+	return $output;
+}
+
+/**
+ * function
+ */
+function transaction_customer_search_form($form_state){
+	$form = array();
+	$form['name'] = array(
+		'#type' => 'textfield',
+		'#title' => t('พิมพ์ชื่อลูกค้า'),
+		'#description' => t('<div>กรอกชื่อลูกค้าที่ต้องการออกตั๋วจำนำให้ เพื่อทำการตรวจสอบว่าเป็นลูกค้าเก่า หรือลูกค้าใหม่</div>
+							 <div>กรณี "ลูกค้าเก่า" ระบบจะเข้าสู่กระบวนการออกตั๋วจำนำทันที</div>
+							 <div>กรณี "ลูกค้าใหม่" จะต้องทำการบันทึกรายชื่อลูกค้าใหม่เข้าสู่ฐานข้อมูลลูกค้าก่อน</div>'),
+		'#required' => TRUE,
+		'#autocomplete_path' => 'customer/autocomplete'
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => t('ออกตั๋วจำนำ'),
+	);
+	return $form;
+}
+
+function transaction_customer_search_form_submit($form, &$form_state){
+	$name = $form_state['values']['name'];
+
+	$result = db_query("SELECT nid, title FROM {node} WHERE title='%s' AND type='%s'", trim($name), 'customer_profile');
+	$customer = db_fetch_object($result);
+
+	$name_token = explode(" ", trim($name));
+
+	if ($customer->nid != '') {
+		$redirect = array(
+			'path' => "node/".$customer->nid."/add-transaction",
+			'query' => NULL,
+			'fragment' => 'list'
+		);
+
+		$form_state['redirect'] = $redirect;
+	}
+	else {
+		$redirect = array(
+			'path' => "transaction/ticket/new",
+			'query' => "customer_name=".implode("+", $name_token),
+			'fragment' => 'main'
+		);
+
+		$form_state['redirect'] = $redirect;
+	}
+}
+
+function transaction_preprint_ticket($node) {
+	session_unregister("money_value_thai");
+
+	$tpm = db_fetch_object(db_query("SELECT field_transaction_stake_rate_value,
+		  							 		field_transaction_total_cost_value
+									 FROM {content_type_transaction_gold}
+									 WHERE nid=%d", $node->nid));
+
+	$total_int = $tpm->field_transaction_total_cost_value;
+
+	$output = "";
+	$output .= '<style>
+					.preprint-wrapper {
+					  	width:500px;
+					  	margin:0 auto;
+					  	margin-top:30px;
+					  	border:1px solid #eee;
+					  	padding:20px;
+					  	text-align:center;
+					  	line-height:25px;
+					  	background:#eee;
+					}
+
+					#edit-money {
+						margin:20px 0px;
+					}
+				}
+				</style>';
+	$output .= '<div class="preprint-wrapper">
+					<div class="">
+						พิมพ์ยอดเงินเป็นภาษาไทย
+					</div>
+					<div class="">
+						'.number_format($total_int).'
+					</div>
+					'.drupal_get_form('transaction_preprint_form', $node).'
+				</div>';
+	echo $output;
+}
+
+function transaction_preprint_form($form_id, $node) {
+	$form = array();
+	$form['money'] = array(
+			'#type' => 'textfield',
+			'#value' => $node->field_transaction_money_str[0]['value'],
+			'#required' => true,
+			'#size' => 50,
+		);
+
+	$form['nid'] = array(
+			'#type' => 'value',
+			'#value' => $node->nid,
+		);
+
+	$form['submit'] = array(
+			'#type' => 'submit',
+			'#value' => 'Save',
+		);
+	return $form;
+}
+
+function transaction_preprint_form_submit($form_id, &$form_state) {
+	$value = $form_state['values']['money'];
+	$nid = $form_state['values']['nid'];
+
+	session_register("money_value_thai");
+
+	$_SESSION['money_value_thai'] = $value;
+
+	drupal_goto("transaction/print/".$nid);
+}
+
+/**
+ * function
+ */
+function transaction_print_ticket(&$node){
+	$css_width = '8.5cm';
+	$font_size = '10px';
+
+	$output = '';
+
+	$path  = 'http://'.$_SERVER['SERVER_NAME'].base_path();
+	$dot  = $path.drupal_get_path('theme', 'ninesixtyrobots').'/images/dots.gif';
+
+	/**
+	 * Print area
+	 */
+
+	$css .= '<style type="text/css" media="print,screen" >
+					.detail-list, .announce-table, .signature-table, .ticket-detail, .print-date, .tk-header {
+						width:'.$css_width.';
+					}
+
+					table {
+						width:100%;
+						border-collapse: collapse;
+
+						font-size:'.$font_size.';
+						color: #1D2326;
+						font-family: Arial,Verdana,sans-serif;
+					}
+
+					.ticket-detail td, .tk-header td, .announce-table td, .signature-table td {
+						border:1px none;
+					}
+
+					.tk-header td {
+						padding-top:0px;
+						vertical-align:top;
+					}
+
+					.tk-header div.ticket-code {
+						text-align:right;
+					}
+
+					.print-date table {
+						border-collapse: collapse;
+						font-size:'.$font_size.';
+						color: #1D2326;
+						font-family: Arial,Verdana,sans-serif;
+					}
+
+					.detail-list {
+						margin:5px 0px 0px 0px;
+						position:relative;
+					}
+
+					.detail-list td, .detail-list th {
+						border-color:#FFF;
+					}
+
+
+					th {
+						text-align:center;
+						color:#fff;
+					}
+
+					th, td {
+					  border-width: 1px;
+					  border-style: solid;
+					  padding:5px;
+					  vertical-align:baseline;
+					}
+
+					div.print-date {
+						margin-top:-0.7cm;
+						margin-left:-0.7cm;
+					}
+
+					.blank {
+						height:25px;
+					}
+
+					.print-date td {
+						border:0px none;
+					}
+
+					.print-date td.label {
+						font-weight:bold;
+						width:25px;
+						color:#fff;
+					}
+
+					.print-date td.label.t1 {
+						font-weight:bold;
+						width:25px;
+					}
+
+					.detail-list {
+						margin-left:-15px;
+					}
+
+					.detail-list td {
+						font-size:13px;
+					}
+
+					.detail-list.total {
+						position:absolute;
+						top:340px;
+					}
+
+					.col-contrainer.right .detail-list {
+						margin-left:-0.8cm;
+					}
+
+					.detail-list td.total-lable {
+						font-weight:bold;
+						text-align:center;
+						color:#fff;
+					}
+
+					.detail-list td.total-lable.detail {
+						font-weight:bold;
+						text-align:center;
+						color:#000;
+					}
+
+					.detail-list td.total {
+						font-weight:bold;
+						padding-top:20px;
+					}
+
+					.print-date td.data {
+						text-align:center;
+						width:90px;
+						padding-left:0px;
+					}
+
+					.print-date div.wrapper {
+						width:100%;
+						/*background: url("'.$dot.'") repeat-x scroll left bottom transparent;*/
+					}
+
+					.announce-table .holiday {
+						width:100px;
+						text-align:right;
+						color:#fff;
+					}
+
+					.announce {
+						color:#fff;
+					}
+
+					.signature-table {
+						position: absolute;
+						top:420px;
+					}
+
+					.signature-table td.t1 {
+						width:20px;
+						color:#fff;
+						margin-top:1.5cm;
+					}
+
+					.signature-table td.t3 {
+						width:70px;
+						text-align:right;
+						color:#fff;
+					}
+
+					.signature-table div.signature-wrapper {
+						width:100%;
+						/*background: url("'.$dot.'") repeat-x scroll left bottom transparent;*/
+						text-align:center
+					}
+
+					.ticket-detail div.detail-wrapper {
+						width:100%;
+						background: url("'.$dot.'") repeat-x scroll left bottom transparent;
+					}
+
+					.ticket-detail td.t1 {
+						width:60px;
+					}
+
+					.ticket-detail td.t2 {
+						width:80px;
+						text-align:center;
+					}
+
+					.ticket-detail td.t3 {
+						width:40px;
+					}
+
+					.ticket-detail td.t4 {
+						width:130px;
+						text-align:center;
+					}
+
+					.ticket-detail td.t5 {
+						width:60px;
+					}
+
+					.ticket-detail td.t6 {
+						text-align:center;
+					}
+
+					.ticket-detail .label {
+						font-weight:bold;
+					}
+
+					.ticket-code {
+						font-weight:bold;
+						font-size:16px;
+						padding-top:5px;
+						position:absolute;
+						margin-left:-30px;
+					}
+
+					.col-contrainer.right .ticket-code {
+						padding-right: 10px;
+					}
+
+					.store-name {
+						font-weight:bold;
+						font-size:16px;
+					}
+
+					.detail-list td.amount {
+						text-align:center;
+						width:1cm;
+					}
+
+					.detail-list td.weight {
+
+					}
+
+					.detail-list td.type {
+
+					}
+
+					.detail-list td.cost {
+						text-align:right;
+						width:1.4cm;
+					}
+
+					table.table-contrainer {
+						width:20cm;
+					}
+
+					table.table-contrainer td.col-contrainer {
+						padding:5px 0px 5px 25px;
+						width:8.5cm;
+						border:1px dotted #fff;
+					}
+
+					td.remark-lost {
+						font-weight:bold;
+						font-size:12px;
+					}
+
+					td.hide {
+						color:#fff;
+					}
+
+					.col-contrainer.left td.year {
+						padding-left:10px;
+					}
+
+				</style>';
+
+	// $output .= transaction_print_detail($node);
+
+	/**
+	 * Render to html
+	 */
+
+	$html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN"
+	   			"http://www.w3.org/TR/html4/strict.dtd">
+
+			<html lang="en">
+				<head>
+					<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+					<title>Print</title>
+					<meta name="generator" content="TextMate http://macromates.com/">
+					<meta name="author" content="Phisan Shukkhi">
+					'.$css.'
+					<script language="Javascript1.2">
+					<!--
+					  function printpage() {
+					  	window.print();
+					  }
+					//-->
+					</script>
+				</head>
+				<body onload="printpage()">
+					<table class="table-contrainer">
+						<tr>
+							<td class="col-contrainer left">'.transaction_print_detail($node, "left").'</td>
+							<td class="col-contrainer right">'.transaction_print_detail($node, "right").'</td>
+						</tr>
+					</table>
+				</body>
+			</html>';
+
+	print $html;
+	exit();
+}
+
+/**
+ * function
+ */
+function transaction_print_detail(&$transaction, $side=NULL){
+	$all_row = 7;
+
+	$rows = array();
+	$rows_index = 1;
+	$cost_total = 0;
+
+	/*Ticket Header*/
+
+	$header_msg .= '<div class="store-name">&nbsp;&nbsp;&nbsp;&nbsp;</div>';
+	$header_msg .= '<div class="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>';
+	$header_msg .= '<div class="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>';
+
+	$tk_header = array();
+	$tk_header[] = array(
+		array('class'=>'hide', 'data'=>$header_msg),
+		array('class'=>'', 'data'=>'<div class="ticket-code">'.$transaction->field_transaction_code[0]['value'].'</div>'),
+	);
+
+	/*Prepare Date Data*/
+	$thai_date = thai_time_format($transaction->created, 'd-F-Y');
+	list($date, $month, $year) = explode(' ', trim($thai_date));
+
+
+	$show_date_rows = array();
+	$show_date_rows[] = array(
+		array('class'=>'label t1', 'data'=>"&nbsp;&nbsp;&nbsp;&nbsp;"),
+		array('class'=>'data', 'data'=>'<div class="wrapper">'.$date.'</div>'),
+		array('class'=>'label', 'data'=>"&nbsp;&nbsp;&nbsp;&nbsp;"),
+		array('class'=>'data', 'data'=>'<div class="wrapper">'.$month.'</div>'),
+		array('class'=>'label', 'data'=>"&nbsp;&nbsp;&nbsp;&nbsp;"),
+		array('class'=>'data year', 'data'=>'<div class="wrapper">&nbsp;&nbsp;'.$year.'</div>'),
+	);
+
+	/**
+	 * Group by gold type
+	 */
+	$gold_detail = array();
+	$result = db_query("SELECT nid FROM {node} WHERE type='%s' ORDER BY nid ASC", 'gold_category');
+	while ($cat_id = db_result($result)) {
+		$result2 = db_query("SELECT *
+							 FROM {content_type_transaction_detail}
+							 WHERE field_transaction_ref_nid=%d AND field_gold_type_ref_nid=%d
+							 ORDER BY nid ASC", $transaction->nid, $cat_id);
+		while ($detail = db_fetch_object($result2)) {
+			if ($detail->nid) {
+
+				/*calculate value*/
+				$reduce   = intval($detail->field_detail_reduce_cost_value);
+				$add_cost = intval($detail->field_detail_add_cost_value);
+				$remain_value = ($detail->field_transaction_cost_value + $add_cost) - $reduce;
+
+				$type_str = db_result(db_query("SELECT title FROM {node} WHERE nid=%d", $detail->field_gold_type_ref_nid));
+				$unit_type = $detail->field_transaction_unit_value;
+
+				/*keep data*/
+				$gold_detail[$cat_id][$unit_type][$detail->nid] = array(
+					'#type' => $type_str,
+					'#cost' => $remain_value,
+					'#weight' =>  $detail->field_transaction_weight_value,
+					'#amount' => $detail->field_transaction_value_value,
+					'#detail' => $detail->field_transaction_sub_detail_value,
+				);
+			}
+		}
+
+	}
+
+	foreach ($gold_detail as $cat_id => $unit) {
+		foreach ($unit as $unit_str => $tc_detail) {
+			$count = 0;
+			$weight = 0;
+			$cost = 0;
+			$detail = array();
+			foreach ($tc_detail as $key => $value) {
+				$type_str = $value['#type'];
+				$weight += $value['#weight'];
+				$cost += $value['#cost'];
+				$count += $value['#amount'];
+				if ($value['#detail'] != "") {
+					$detail[] = $value['#detail'];
+				}
+			}
+
+			$rows[] = array(
+				array('class'=>'amount', 'data'=>$count),
+				array('class'=>'type', 'data'=>$type_str." ".implode(', ', $detail)),
+				array('class'=>'cost', 'data'=>$weight." ".$unit_str),
+				array('class'=>'cost', 'data'=>number_format($cost)),
+			);
+
+			$cost_total += $cost;
+		}
+	}
+
+	$print_row = count($rows);
+	$all_row -= $print_row;
+
+	// for ($i=0; $i < $all_row; $i++) {
+	// 	$rows[] = array(
+	// 		array('class'=>'type blank', 'data'=>''),
+	// 		array('class'=>'weight blank', 'data'=>''),
+	// 		array('class'=>'unit blank', 'data'=>''),
+	// 		array('class'=>'blank', 'data'=>''),
+	// 	);
+	// }
+
+	$version_date = thai_time_format($transaction->field_transaction_print_date[0]['value'], 'd-F-Y', 1);
+
+	$loss_status = db_result(db_query("SELECT field_transaction_print_loss_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction->nid));
+	$version = db_result(db_query("SELECT field_transaction_print_no_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction->nid));
+	$loss_date = db_result(db_query("SELECT field_transaction_print_date_value FROM {content_type_transaction_gold} WHERE nid=%d", $transaction->nid));
+
+	if ($loss_date == "") {
+		$remark = '&nbsp;';
+	}else {
+		$remark = "พิมพ์ตั๋ววันที่ ".thai_time_format($loss_date, 'd-F-Y')." ครั้งที่ ".$version." ออกแทนที่ตั๋วหาย";
+	}
+
+
+	$rows[] = array(
+		array('class'=>'remark-lost', 'data'=>$remark, 'colspan'=>4),
+	);
+
+	$rows_total[] = array(
+		array('class'=>'total-lable', 'data'=>'&nbsp;&nbsp;&nbsp;&nbsp;'),
+		array('class'=>'total-lable detail', 'data'=>$_SESSION['money_value_thai']),
+		array('class'=>'cost total', 'data'=>number_format($cost_total)),
+	);
+
+	$header = array(
+		"&nbsp;&nbsp;&nbsp;&nbsp;",
+		"&nbsp;&nbsp;&nbsp;&nbsp;",
+		"&nbsp;&nbsp;&nbsp;&nbsp;",
+		"&nbsp;&nbsp;&nbsp;&nbsp;",
+	);
+
+
+	$ann = array();
+	$ann[] = array(
+		// array('class'=>'announce', 'data'=>t("ถ้าไม่มาซื้อคืนภายใน #expire วัน ถือว่าสละสิทธิ์", array('#expire'=>EXPIRE))),
+		// array('class'=>'holiday', 'data'=>t("หยุดทุกวันเสาร์")),
+		array('class'=>'announce', 'data'=>"&nbsp;&nbsp;&nbsp;&nbsp;"),
+		array('class'=>'holiday', 'data'=>t("&nbsp;&nbsp;&nbsp;&nbsp;")),
+	);
+
+	if ($side == 'right') {
+		$result = db_query("SELECT title FROM {node} WHERE uid=%d AND type='%s'", $transaction->uid, 'employee_profile');
+		$name = db_result($result);
+		$signature_str = $name;
+	}else {
+		$result = db_query("SELECT title FROM {node} WHERE nid=%d", $transaction->field_customer_ref[0]['nid']);
+		$name = db_result($result);
+		$signature_str = $name;
+	}
+
+	$signature = array();
+	$signature[] = array(
+		// array('class'=>'t1', 'data'=>t("ลงชื่อ")),
+		array('class'=>'t1', 'data'=>"&nbsp;&nbsp;&nbsp;&nbsp;"),
+		array('class'=>'t2', 'data'=>'<div class="signature-wrapper">'.$signature_str.'</div>'),
+		// array('class'=>'t3', 'data'=>t("ผู้ชื้อ/ผู้ชาย")),
+		array('class'=>'t3', 'data'=>t("&nbsp;&nbsp;&nbsp;&nbsp;")),
+	);
+
+
+	$output .= '<div class="tk-header">'
+					.theme('table', $header_none, $tk_header).
+			   '</div>';
+
+	$output .= '<div class="print-date">'
+					.theme('table', $header_none, $show_date_rows).
+			   '</div>';
+
+	$output .= '<div class="detail-list">
+	 				'.theme('table', $header, $rows).'
+	 			</div>';
+
+	$header_total = array();
+
+	$output .= '<div class="detail-list total">
+	 				'.theme('table', $header_total, $rows_total).'
+	 			</div>';
+
+	$output .= '<div class="announce-table">
+					'.theme('table', $header_none, $ann).'
+	 			</div>';
+
+	$output .= '<div class="signature-table">
+					'.theme('table', $header_none, $signature).'
+	 			</div>';
+
+	return $output;
+}
+
+/**
+ * function
+ */
+function transaction_adjust_detail_select(){
+	$rows = array();
+
+	$rows[] = array(
+		array('class'=>'radio-select', 'data'=>'<input type="radio" id="adjust-detail" name="adjust-detail" value=0 checked>'),
+		array('class'=>'label', 'data'=>t("ไถ่ถอนบางส่วน")),
+		array('class'=>'radio-select', 'data'=>'<input type="radio" id="adjust-detail" name="adjust-detail" value=1>'),
+		array('class'=>'label', 'data'=>t("ปรับราคาทองที่จำนำก่อนไถ่ถอน")),
+	);
+
+	return '<div class="adjust-table"><center>'.theme('table', $header, $rows).'</center></div>';
+}
+
+/**
+ * Get Customer name and send to autocomplete field
+ */
+function transaction_customer_autocomplete($string = ''){
+	$result = db_query("SELECT title FROM {node} WHERE type='%s' AND title LIKE '%s%%' ", 'customer_profile', $string);
+	while ($title = db_result($result)) {
+		$matches[$title] = check_plain($title);
+	}
+
+	print drupal_to_js($matches);
+	exit();
+}
+
+function transaction_show_all(&$node) {
+	$output = '';
+	$output .= views_embed_view('transaction_customer_attach', 'default', $node->nid);
+	return $output;
+}
+
+/**
+ * function
+ */
+function transaction_gold_category_edit_link(&$nid){
+	return l(t('แก้ไข'), 'node/'.$nid.'/edit');
+}
+
+function transaction_get_char_cat() {
+	return array(
+		1 => 'A',
+		2 => 'B',
+		3 => 'C',
+		4 => 'D',
+		5 => 'E',
+		6 => 'F',
+		7 => 'G',
+		8 => 'H',
+		9 => 'I',
+		10 => 'J',
+		11 => 'K',
+		12 => 'L',
+		13 => 'M',
+		14 => 'N',
+		15 => 'O',
+		16 => 'P',
+		17 => 'Q',
+		18 => 'R',
+		19 => 'S',
+		20 => 'T',
+		21 => 'U',
+		22 =>  'V',
+		23 =>  'W',
+		24 =>  'X',
+		25 =>  'Y',
+		26 =>  'Z',
+	);
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function transaction_cron() {
+	$current_time = time();
+	if (!transaction_check_holiday($current_time)) {
+		transaction_clear_expire();
+	}
+}
+
+/**
+ * function
+ */
+function transaction_clear_expire(){
+	$current_time = time();
+
+	$result = db_query("SELECT nid as nid, field_transaction_interval_type_value as type
+						FROM {content_type_transaction_gold}
+						WHERE field_transaction_status_value=%d ORDER BY nid LIMIT 50", 5);
+
+	while ($transaction = db_fetch_object($result)) {
+		$created = db_result(db_query("SELECT created FROM {node} WHERE nid=%d", $transaction->nid));
+
+		$real_end_date = transaction_calulate_interval_thai($created);
+
+		if ($transaction->type == 0) {
+			$day   = format_date($real_end_date, 'custom', 'd');
+			$month = format_date($real_end_date, 'custom', 'm');
+			$year  = format_date($real_end_date, 'custom', 'Y');
+
+			$real_end_date = mktime(0, 0, 0, $month+3, $day, $year);
+		}
+
+		/**
+		 * Condition for change status
+		 */
+		$this_time = time();
+		if ($this_time <= $real_end_date) {
+			$render = TRUE;
+		}
+		else {
+			$interval_check = thai_time_get_interval_day($real_end_date, $this_time);
+
+			if ($transaction->type == 0) {
+				$exprie_check = EXPIRE_FOUR_MONTH;
+			}
+			elseif ($transaction->type == 1) {
+				$exprie_check = EXPIRE_ONE_MONTH;
+			}
+
+			if ($interval_check <= $exprie_check) {
+				$render = TRUE;
+			}
+			else {
+				$render = FALSE;
+			}
+		}
+
+		if (!$render) {
+			/**
+			 * Update data in old transaction
+			 */
+			db_query("UPDATE {content_type_transaction_gold}
+				 	  SET  field_transaction_status_value=%d,
+						   field_transaction_expire_date_value='%s'
+				      WHERE nid=%d", 6, $current_time, $transaction->nid);
+
+			/**
+			 * set status of old transaction
+			 */
+			$old_term = db_result(db_query("SELECT t.tid
+									   		FROM {term_node} t
+									   		INNER JOIN {term_data} d ON d.tid=t.tid
+									   		WHERE nid=%d AND d.vid=%d", $transaction->nid, 2));
+
+			db_query("UPDATE {term_node} SET tid=%d WHERE nid=%d AND tid=%d", 6, $transaction->nid, $old_term);
+		}
+
+	}
+	//end while
+}
+
+/**
+ * function
+ */
+function transaction_check_holiday($current_time){
+	$holiday_fag = false;
+
+	$day   = format_date($current_time, 'custom', 'd');
+	$month = format_date($current_time, 'custom', 'm');
+	$year  = format_date($current_time, 'custom', 'Y');
+
+	/*check today is Sunday*/
+	$day_str   = format_date($current_time, 'custom', 'D');
+	if ($day_str == "Sat") {
+		$holiday_fag = true;
+	}
+
+	/*check today is holiday ?*/
+	$current_stamp = mktime(0, 0, 0, $month, $day, $year);
+	$get_holiday = 0;
+	$result = db_query("SELECT nid FROM {content_type_holliday} WHERE field_holliday_date_value=%d LIMIT 1", $current_stamp);
+	$get_holiday = db_result($result);
+
+	if ($get_holiday) {
+		$holiday_fag = true;
+	}
+
+	/*check today is holiday or Sunday*/
+	$previous_stamp = mktime(0, 0, 0, $month, $day-1, $year);
+	$day_str   = format_date($previous_stamp, 'custom', 'D');
+
+	$get_holiday = 0;
+	$result = db_query("SELECT nid FROM {content_type_holliday} WHERE field_holliday_date_value=%d LIMIT 1", $previous_stamp);
+	$get_holiday = db_result($result);
+
+	if ($get_holiday || $day_str == "Sat") {
+		$holiday_fag = true;
+	}
+
+	return $holiday_fag;
+
+}
+

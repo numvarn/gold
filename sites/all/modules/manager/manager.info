@@ -1,0 +1,6 @@
+; $Id$
+name = Manager
+description = manager control all data
+package = Phisan Shukkhi
+version = VERSION
+core = 6.x

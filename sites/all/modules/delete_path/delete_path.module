@@ -1,0 +1,70 @@
+<?php
+/**
+* implementing hook_form_alter
+*
+*/
+function delete_path_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'node_delete_confirm') {
+    $form['#submit'][] = 'delete_path_submit';
+  }
+}
+
+function delete_path_help($path, $arg) {
+	switch ($path) {
+		case 'node/%/delete':
+			$node = node_load($arg[1]);
+			
+			if ($node->type == "transaction_detail") {
+				$return_node_id = $node->field_transaction_ref[0]['nid'];
+				delete_path_add_destination($return_node_id);
+			}
+			elseif ($node->type == "transaction_gold") {
+				$destination = "transaction/all";
+				delete_path_transaction_add_destination($destination);
+			}	
+			elseif ($node->type == "gold_category") {
+				$destination = "manager/product/category";
+				delete_path_transaction_add_destination($destination);
+			}		
+			break;
+	}
+	return $output;
+}
+
+/**
+ * Store destination path to user object
+ */ 
+function delete_path_add_destination($node_id) {
+	global $user; 
+	
+	$path = drupal_get_path_alias("node/".$node_id);
+	
+	$destination = array('destination' => $path); 
+	user_save($user, $destination);
+}
+
+/**
+ * Store destination path to user object
+ */ 
+function delete_path_transaction_add_destination($destination_path) {
+	global $user; 
+	$destination = array('destination' => $destination_path); 
+	user_save($user, $destination);
+}
+
+/**
+* function is called after a node is deleted. Put the logic here
+*
+*/
+function delete_path_submit() {
+	global $user;
+	if ($user->destination != "") {
+		$destination = $user->destination;
+		
+		$destination_clear = array('destination' => ""); 
+		user_save($user, $destination_clear);
+		
+		drupal_goto($destination);
+	}
+}
+?>
